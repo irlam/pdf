@@ -10,6 +10,7 @@ This tool provides a comprehensive suite of PDF editing and manipulation feature
 - **Text Editing**: Cover existing text and replace with new content (fonts, sizes, colors, alignment)
 - **Redaction**: Draw opaque boxes to permanently hide sensitive content
 - **Image Placement**: Insert PNG/JPG images anywhere on the page
+- **Watermark/Stamp**: Add semi-transparent text overlays like "DRAFT" or "CONFIDENTIAL"
 - **Drawing Tools**: Add boxes, lines, arrows, and dimension annotations
 - **Page Operations**: Insert, duplicate, delete, rotate, and reorder pages
 - **Find & Replace**: Search for text runs and overlay replacements
@@ -17,8 +18,11 @@ This tool provides a comprehensive suite of PDF editing and manipulation feature
 - **Snap & Grid**: Align annotations precisely with configurable grid snapping
 - **Scale Calibration**: Auto-detect or manually calibrate drawing scales for accurate measurements
 - **Undo/Redo**: Full history of all edits
+- **Drag & Drop**: Simply drag PDF files onto the editor to open them
 
 ### Additional Tools
+- **Merge** (`/tools/merge.html`): Combine multiple PDFs into a single document with drag-to-reorder
+- **Split** (`/tools/split.html`): Extract page ranges into separate PDF files
 - **Crop** (`/tools/crop.html`): Define crop regions (soft CropBox or hard raster crop)
 - **Convert** (`/tools/convert.html`): PDF↔image, PDF→text, images→PDF, text→PDF
 - **DWG Viewer** (`/tools/dwg.html`): Open DWG files (with server-side DXF conversion), measure, and export to PDF
@@ -85,6 +89,8 @@ For static hosting, use the Download button instead of Save.
 │   └── ui.css          # Shared UI styles
 │
 ├── /tools/
+│   ├── merge.html      # Multi-PDF merge tool
+│   ├── split.html      # Split PDF by page ranges
 │   ├── crop.html       # Cropping interface
 │   ├── convert.html    # Format conversion
 │   ├── dwg.html        # DWG/DXF viewer

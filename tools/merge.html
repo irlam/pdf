@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Merge PDFs — PDF Editor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/assets/ui.css">
+  <style>
+    :root{ --bg:#0b1220; --text:#e5e7eb; --muted:#94a3b8; --border:#1f2937; }
+    html,body{ margin:0; background:var(--bg); color:var(--text);
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,'Helvetica Neue',Arial,sans-serif; }
+    .wrap{ max-width:900px; margin:24px auto; padding:0 16px; }
+    .card{ background:#0f172a; border:1px solid var(--border); border-radius:14px; padding:16px; margin:12px 0; }
+    .card h2{ margin:0 0 12px; font-size:20px; }
+    .muted{ color:var(--muted); font-size:13px; }
+    
+    /* File list styling */
+    .file-list{ list-style:none; padding:0; margin:12px 0; min-height:60px; }
+    .file-list li{ 
+      display:flex; align-items:center; gap:10px; padding:10px 12px; 
+      background:#111827; border:1px solid var(--border); border-radius:10px; margin:6px 0;
+      cursor:grab; user-select:none;
+    }
+    .file-list li:hover{ background:#1e293b; }
+    .file-list li.dragging{ opacity:0.5; border-color:#3b82f6; }
+    .file-list li .handle{ color:#64748b; font-size:18px; }
+    .file-list li .name{ flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .file-list li .pages{ color:var(--muted); font-size:12px; }
+    .file-list li .remove{ 
+      background:#7f1d1d; border:none; color:#fecaca; padding:4px 8px; 
+      border-radius:6px; cursor:pointer; font-size:12px;
+    }
+    .file-list li .remove:hover{ background:#991b1b; }
+    
+    /* Drop zone */
+    .drop-zone{ 
+      border:2px dashed var(--border); border-radius:12px; padding:32px; 
+      text-align:center; margin:12px 0; transition:border-color 0.2s, background 0.2s;
+    }
+    .drop-zone.drag-over{ border-color:#3b82f6; background:rgba(59,130,246,0.1); }
+    .drop-zone p{ margin:8px 0; }
+    
+    /* Progress */
+    .progress-bar{ height:8px; background:#1e293b; border-radius:4px; overflow:hidden; margin:12px 0; }
+    .progress-bar .fill{ height:100%; background:linear-gradient(90deg, #3b82f6, #60a5fa); width:0%; transition:width 0.3s; }
+    
+    /* Buttons */
+    .actions{ display:flex; gap:10px; flex-wrap:wrap; margin-top:16px; }
+    .btn-primary{ background:linear-gradient(180deg, #2563eb, #1e40af); border-color:rgba(37,99,235,.6); }
+    
+    /* Empty state */
+    .empty-state{ text-align:center; padding:24px; color:var(--muted); }
+  </style>
+</head>
+<body>
+<header class="topnav">
+  <div class="brand">PDF Editor — Merge</div>
+  <nav>
+    <a href="/index.html">Editor</a>
+    <a href="/tools/split.html">Split</a>
+    <a href="/tools/crop.html">Crop</a>
+    <a href="/tools/convert.html">Convert</a>
+    <a href="/help.html">Help</a>
+  </nav>
+</header>
+
+<div class="wrap">
+  <div class="card">
+    <h2>📄 Merge Multiple PDFs</h2>
+    <p class="muted">Combine multiple PDF files into a single document. Drag to reorder files before merging.</p>
+    
+    <div class="drop-zone" id="dropZone">
+      <p><strong>📁 Drop PDF files here</strong></p>
+      <p class="muted">or</p>
+      <input type="file" id="fileInput" accept="application/pdf" multiple style="display:none">
+      <button id="selectBtn">Select PDF Files</button>
+    </div>
+    
+    <ul class="file-list" id="fileList">
+      <li class="empty-state">No files selected. Add PDFs above to get started.</li>
+    </ul>
+    
+    <div class="progress-bar" id="progressBar" style="display:none">
+      <div class="fill" id="progressFill"></div>
+    </div>
+    <p id="statusText" class="muted" style="display:none"></p>
+    
+    <div class="actions">
+      <button id="mergeBtn" class="btn-primary" disabled>Merge & Download</button>
+      <button id="clearBtn">Clear All</button>
+    </div>
+  </div>
+  
+  <div class="card">
+    <h2>💡 Tips</h2>
+    <ul class="muted">
+      <li>Drag and drop files to change their order in the merged PDF</li>
+      <li>The merged PDF will contain all pages from each file in sequence</li>
+      <li>Processing happens entirely in your browser — files are not uploaded</li>
+      <li>For very large files, merging may take a few moments</li>
+    </ul>
+  </div>
+</div>
+
+<!-- pdf-lib (self-hosted) -->
+<script src="/vendor/pdf-lib.min.js"></script>
+
+<script>
+const { PDFDocument } = PDFLib;
+
+// DOM elements
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const selectBtn = document.getElementById('selectBtn');
+const fileList = document.getElementById('fileList');
+const mergeBtn = document.getElementById('mergeBtn');
+const clearBtn = document.getElementById('clearBtn');
+const progressBar = document.getElementById('progressBar');
+const progressFill = document.getElementById('progressFill');
+const statusText = document.getElementById('statusText');
+
+// State
+let pdfFiles = []; // { name, data: ArrayBuffer, pageCount }
+
+// Helpers
+function updateProgress(percent, text) {
+  progressBar.style.display = 'block';
+  progressFill.style.width = percent + '%';
+  if (text) {
+    statusText.style.display = 'block';
+    statusText.textContent = text;
+  }
+}
+
+function hideProgress() {
+  progressBar.style.display = 'none';
+  statusText.style.display = 'none';
+  progressFill.style.width = '0%';
+}
+
+function updateUI() {
+  mergeBtn.disabled = pdfFiles.length < 2;
+  
+  if (pdfFiles.length === 0) {
+    fileList.innerHTML = '<li class="empty-state">No files selected. Add PDFs above to get started.</li>';
+    return;
+  }
+  
+  fileList.innerHTML = pdfFiles.map((file, index) => `
+    <li draggable="true" data-index="${index}">
+      <span class="handle">☰</span>
+      <span class="name" title="${file.name}">${file.name}</span>
+      <span class="pages">${file.pageCount} page${file.pageCount !== 1 ? 's' : ''}</span>
+      <button class="remove" data-index="${index}">✕</button>
+    </li>
+  `).join('');
+  
+  // Add drag-and-drop reordering
+  setupDragReorder();
+  
+  // Add remove button handlers
+  fileList.querySelectorAll('.remove').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const index = parseInt(btn.dataset.index, 10);
+      pdfFiles.splice(index, 1);
+      updateUI();
+    });
+  });
+}
+
+function setupDragReorder() {
+  const items = fileList.querySelectorAll('li[draggable]');
+  let draggedItem = null;
+  
+  items.forEach(item => {
+    item.addEventListener('dragstart', (e) => {
+      draggedItem = item;
+      item.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    
+    item.addEventListener('dragend', () => {
+      item.classList.remove('dragging');
+      draggedItem = null;
+    });
+    
+    item.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+    });
+    
+    item.addEventListener('drop', (e) => {
+      e.preventDefault();
+      if (draggedItem && draggedItem !== item) {
+        const fromIndex = parseInt(draggedItem.dataset.index, 10);
+        const toIndex = parseInt(item.dataset.index, 10);
+        
+        // Reorder the array
+        const [moved] = pdfFiles.splice(fromIndex, 1);
+        pdfFiles.splice(toIndex, 0, moved);
+        updateUI();
+      }
+    });
+  });
+}
+
+async function addPdfFiles(files) {
+  for (const file of files) {
+    if (!file.type.includes('pdf') && !file.name.toLowerCase().endsWith('.pdf')) {
+      alert(`Skipping "${file.name}" - not a PDF file`);
+      continue;
+    }
+    
+    try {
+      updateProgress(0, `Loading ${file.name}...`);
+      const data = await file.arrayBuffer();
+      
+      // Validate and get page count
+      const pdf = await PDFDocument.load(data);
+      const pageCount = pdf.getPageCount();
+      
+      pdfFiles.push({ name: file.name, data, pageCount });
+      updateUI();
+    } catch (err) {
+      console.error(`Error loading ${file.name}:`, err);
+      alert(`Failed to load "${file.name}": ${err.message}`);
+    }
+  }
+  hideProgress();
+}
+
+async function mergePdfs() {
+  if (pdfFiles.length < 2) return;
+  
+  try {
+    mergeBtn.disabled = true;
+    updateProgress(0, 'Creating merged document...');
+    
+    const mergedPdf = await PDFDocument.create();
+    const total = pdfFiles.length;
+    
+    for (let i = 0; i < total; i++) {
+      const file = pdfFiles[i];
+      updateProgress(((i + 0.5) / total) * 100, `Adding ${file.name}...`);
+      
+      const pdf = await PDFDocument.load(file.data);
+      const pages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+      pages.forEach(page => mergedPdf.addPage(page));
+      
+      updateProgress(((i + 1) / total) * 100, `Added ${file.name}`);
+    }
+    
+    updateProgress(95, 'Saving merged PDF...');
+    const mergedBytes = await mergedPdf.save();
+    
+    // Download
+    const blob = new Blob([mergedBytes], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'merged.pdf';
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    updateProgress(100, `Success! Merged ${total} PDFs (${mergedPdf.getPageCount()} pages total)`);
+    setTimeout(hideProgress, 3000);
+    
+  } catch (err) {
+    console.error('Merge failed:', err);
+    alert('Merge failed: ' + err.message);
+    hideProgress();
+  } finally {
+    mergeBtn.disabled = pdfFiles.length < 2;
+  }
+}
+
+// Event handlers
+selectBtn.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', (e) => addPdfFiles(e.target.files));
+
+dropZone.addEventListener('dragenter', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', (e) => { 
+  e.preventDefault(); 
+  if (!dropZone.contains(e.relatedTarget)) dropZone.classList.remove('drag-over'); 
+});
+dropZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  if (e.dataTransfer?.files) addPdfFiles(e.dataTransfer.files);
+});
+
+mergeBtn.addEventListener('click', mergePdfs);
+clearBtn.addEventListener('click', () => {
+  pdfFiles = [];
+  updateUI();
+  hideProgress();
+});
+
+// Initial UI
+updateUI();
+</script>
+</body>
+</html>
