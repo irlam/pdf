@@ -1466,7 +1466,9 @@ async function initOCR() {
   if (progressText) progressText.textContent = 'Initializing OCR...';
   
   try {
-    ocrWorker = await Tesseract.createWorker(lang, 1, {
+    ocrWorker = await Tesseract.createWorker({
+      langs: lang,
+      oem: 1,
       logger: m => {
         if (m.status && progressText) {
           progressText.textContent = m.status;
