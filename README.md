@@ -68,6 +68,69 @@ Most features work without PHP. The PHP endpoints are only needed for:
 
 For static hosting, use the Download button instead of Save.
 
+## Setup
+
+### DWG Conversion (Optional)
+
+To enable DWG file conversion, you need to install converter binaries on your server:
+
+1. **Create the bin directory** (if not exists):
+   ```bash
+   mkdir -p /path/to/pdf/tools/bin
+   ```
+
+2. **Install LibreDWG** (recommended):
+   ```bash
+   # Ubuntu/Debian
+   sudo apt-get install libredwg-utils
+   cp /usr/bin/dwg2dxf /path/to/pdf/tools/bin/dwg2dxf
+   chmod 755 /path/to/pdf/tools/bin/dwg2dxf
+   ```
+
+   **OR install ODA File Converter** (alternative):
+   - Download from: https://www.opendesign.com/guestfiles/oda_file_converter
+   - Copy to `/tools/bin/ODAFileConverter`
+   - Set permissions: `chmod 755 /path/to/pdf/tools/bin/ODAFileConverter`
+
+3. **Verify**: Visit `/tools/dwg2dxf.php` and upload a test DWG file.
+
+See `/tools/bin/README.md` for detailed instructions.
+
+### DWG Viewer Dependencies
+
+The DWG viewer requires additional JavaScript libraries in `/vendor/`:
+
+```bash
+# Three.js (for 3D/2D rendering)
+cd /path/to/pdf/vendor/three
+curl -o three.min.js https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js
+curl -o OrbitControls.js https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js
+
+# DXF Parser
+cd /path/to/pdf/vendor/dxf-parser
+curl -o dxf-parser.min.js https://cdn.jsdelivr.net/npm/dxf-parser@1.1.2/dist/dxf-parser.min.js
+```
+
+**Note**: PDF-lib is already included at `/vendor/pdf-lib.min.js` and does not need to be downloaded separately.
+
+### Custom Fonts for Text Editing
+
+For exact font matching when editing PDF text:
+
+1. **Obtain TTF/OTF font files** from:
+   - Your system fonts folder
+   - Google Fonts: https://fonts.google.com
+   - Font vendors (with proper licensing)
+
+2. **In the PDF Editor**:
+   - Select "Custom TTF (upload)" from the Font dropdown
+   - Upload your `.ttf` or `.otf` file
+   - Use the "Edit Text" tool to replace text with your font
+
+3. **Optional**: Store frequently-used fonts in `/fonts/` for documentation.
+
+See `/fonts/README.md` for detailed instructions.
+
 ## Project Structure
 
 ```
@@ -88,18 +151,27 @@ For static hosting, use the Download button instead of Save.
 ├── /assets/
 │   └── ui.css          # Shared UI styles
 │
+├── /fonts/             # Custom TTF/OTF fonts (user-provided)
+│   └── README.md       # Font setup instructions
+│
 ├── /tools/
 │   ├── merge.html      # Multi-PDF merge tool
 │   ├── split.html      # Split PDF by page ranges
 │   ├── crop.html       # Cropping interface
 │   ├── convert.html    # Format conversion
 │   ├── dwg.html        # DWG/DXF viewer
-│   └── dwg2dxf.php     # Server-side DWG conversion
+│   ├── dwg2dxf.php     # Server-side DWG conversion
+│   └── /bin/           # Converter binaries (user-provided)
+│       └── README.md   # Binary setup instructions
 │
 ├── /vendor/            # Self-hosted dependencies
 │   ├── pdf.min.js      # PDF.js for rendering
 │   ├── pdf.worker.min.js
-│   └── pdf-lib.min.js  # pdf-lib for editing
+│   ├── pdf-lib.min.js  # pdf-lib for editing (main editor)
+│   ├── jszip.min.js    # ZIP file handling
+│   ├── /three/         # Three.js (for DWG viewer)
+│   ├── /dxf-parser/    # DXF parser (for DWG viewer)
+│   └── /pdf-lib/       # pdf-lib copy (for DWG viewer)
 │
 └── /storage/           # Saved PDF versions (server-side)
 ```
