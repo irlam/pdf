@@ -1,0 +1,32 @@
+# IDE and editor configs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.log
+
+# Cache
+*.cache
+.cache/
+
+# PHP
+*.phar
+
+# Node (if ever used for tooling)
+node_modules/
+
+# Uploaded/generated files in storage (keep directory, ignore contents)
+storage/*.pdf
+
+# DXF conversion output
+uploads/

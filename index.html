@@ -17,32 +17,51 @@
     html,body{ margin:0; background:var(--bg); color:var(--text);
       font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,'Helvetica Neue',Arial,sans-serif;}
     .wrap{ max-width:1200px; margin:18px auto; padding:0 14px;}
-    #viewerShell{ border:1px solid var(--border); border-radius:12px; background:#0e0e0e; padding:8px; }
+    #viewerShell{ border:1px solid var(--border); border-radius:12px; background:#0e0e0e; padding:8px; position:relative; }
     #scroller{ position:relative; overflow:auto; height:76vh; background:#111; border-radius:8px; }
     #pageLayer{ position:relative; width:max-content; height:max-content; }
     #pdfCanvas{ display:block; background:#fff; border-radius:8px; }
     #overlayCanvas{ position:absolute; left:0; top:0; pointer-events:none; }
     .muted{ color:#94a3b8; font-size:13px; margin-top:8px; }
     .kbd{ padding:0 6px; border:1px solid var(--border); border-radius:6px; background:#0f172a; color:#cbd5e1; }
+    /* Drag-and-drop styling */
+    .drop-zone{ display:flex; align-items:center; gap:8px; }
+    .drop-zone.drag-over #viewerShell{ border:2px dashed #3b82f6; background:#0f172a; }
+    #dropOverlay{ display:none; position:absolute; inset:0; background:rgba(59,130,246,0.15); border-radius:8px; z-index:100; align-items:center; justify-content:center; font-size:18px; color:#93c5fd; pointer-events:none; }
+    .drag-over #dropOverlay{ display:flex; }
+    /* Progress/loading indicator */
+    #loadingIndicator{ display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:#1e293b; border:1px solid #3b82f6; border-radius:12px; padding:20px 32px; z-index:1000; color:#e5e7eb; font-size:16px; box-shadow:0 8px 32px rgba(0,0,0,0.5); }
+    #loadingIndicator.visible{ display:flex; align-items:center; gap:12px; }
+    .spinner{ width:24px; height:24px; border:3px solid #3b82f6; border-top-color:transparent; border-radius:50%; animation:spin 1s linear infinite; }
+    @keyframes spin{ to{ transform:rotate(360deg); } }
+    /* Error message styling */
+    .error-toast{ position:fixed; bottom:24px; right:24px; background:#7f1d1d; border:1px solid #ef4444; color:#fecaca; padding:12px 20px; border-radius:10px; z-index:1001; max-width:400px; box-shadow:0 4px 16px rgba(0,0,0,0.4); animation:slideIn 0.3s ease; }
+    @keyframes slideIn{ from{ transform:translateX(100%); opacity:0; } to{ transform:translateX(0); opacity:1; } }
   </style>
 </head>
 <body>
+
+<!-- Loading indicator -->
+<div id="loadingIndicator"><div class="spinner"></div><span id="loadingText">Loading PDF...</span></div>
 
 <header class="topnav">
   <div class="brand">PDF Editor</div>
   <nav>
     <a href="/tools/crop.html">Crop</a>
-    <a href="/tools/dxf.html">DWG→DXF</a>
+    <a href="/tools/dwg.html">DWG→DXF</a>
     <a href="/export.html">Exports</a>
     <a href="/tools/convert.html">Convert</a>
-	<a href="/help.html">Help</a>  
+    <a href="/help.html">Help</a>  
   </nav>
 </header>
 
-<div class="wrap">
+<div class="wrap drop-zone" id="dropZone">
   <!-- Toolbar 1: tools & text -->
   <div class="bar">
-    <input id="file" type="file" accept="application/pdf" />
+    <div class="drop-zone-input">
+      <input id="file" type="file" accept="application/pdf" />
+      <span class="muted" style="margin-left:8px">or drag & drop PDF here</span>
+    </div>
 
     <label>Tool:
       <select id="tool">
@@ -142,6 +161,7 @@
 
   <!-- Viewer -->
   <div id="viewerShell">
+    <div id="dropOverlay">📄 Drop PDF file here</div>
     <div id="scroller">
       <div id="pageLayer">
         <canvas id="pdfCanvas"></canvas>
@@ -161,8 +181,8 @@
 <script src="/vendor/pdf.min.js"></script>
 <script> pdfjsLib.GlobalWorkerOptions.workerSrc = "/vendor/pdf.worker.min.js"; </script>
 
-<!-- pdf-lib -->
-<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<!-- pdf-lib (self-hosted) -->
+<script src="/vendor/pdf-lib.min.js"></script>
 
 <!-- App scripts -->
 <script>
@@ -992,13 +1012,6 @@ el.snap.onchange=()=>{ settings.snap = el.snap.checked; };
 el.gridSize.onchange=()=>{ settings.grid = clamp(parseInt(el.gridSize.value||'8',10), 2, 64); drawOverlay(); };
 el.showGrid.onchange=()=>{ settings.showGrid = el.showGrid.checked; drawOverlay(); };
 
-el.file.onchange = async (e)=>{
-  const f=e.target.files?.[0]; if(!f) return;
-  const buf=await f.arrayBuffer();
-  edits=[]; undoStack=[]; redoStack=[]; selectedIds=[];
-  await loadBoth(buf);
-};
-
 el.customFont.onchange = async (e)=>{
   const f = e.target.files?.[0]; if (!f) return;
   customFontBytes = new Uint8Array(await f.arrayBuffer());
@@ -1033,6 +1046,88 @@ el.findNext.onclick=()=>{
   overlayCtx.lineWidth = 3*dpr(); overlayCtx.strokeStyle="rgba(34,197,94,0.95)";
   overlayCtx.strokeRect(rd.x, rd.y, rd.w, rd.h);
   el.findCount.textContent = `${order.indexOf(findIndex)+1}/${order.length}`;
+};
+
+/* ====== Loading/Progress indicator ====== */
+const loadingEl = document.getElementById('loadingIndicator');
+const loadingText = document.getElementById('loadingText');
+
+function showLoading(text = 'Loading PDF...') {
+  loadingText.textContent = text;
+  loadingEl.classList.add('visible');
+}
+function hideLoading() {
+  loadingEl.classList.remove('visible');
+}
+function showError(message, duration = 5000) {
+  const toast = document.createElement('div');
+  toast.className = 'error-toast';
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), duration);
+}
+
+/* ====== Drag and Drop support ====== */
+const dropZone = document.getElementById('dropZone');
+
+async function handlePdfFile(file) {
+  if (!file) return;
+  
+  // Validate file type
+  if (!file.type.includes('pdf') && !file.name.toLowerCase().endsWith('.pdf')) {
+    showError('Please select a valid PDF file.');
+    return;
+  }
+  
+  // Warn about large files
+  const MAX_SIZE = 50 * 1024 * 1024; // 50MB
+  if (file.size > MAX_SIZE) {
+    showError('Warning: Large files may take a while to process.');
+  }
+  
+  try {
+    showLoading('Loading PDF...');
+    const buf = await file.arrayBuffer();
+    edits = []; undoStack = []; redoStack = []; selectedIds = [];
+    await loadBoth(buf);
+    hideLoading();
+  } catch (err) {
+    hideLoading();
+    console.error('Failed to load PDF:', err);
+    showError('Failed to load PDF: ' + (err.message || 'Unknown error'));
+  }
+}
+
+// Drag events
+dropZone.addEventListener('dragenter', (e) => {
+  e.preventDefault();
+  dropZone.classList.add('drag-over');
+});
+dropZone.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  dropZone.classList.add('drag-over');
+});
+dropZone.addEventListener('dragleave', (e) => {
+  e.preventDefault();
+  // Only remove class if leaving the dropzone entirely
+  if (!dropZone.contains(e.relatedTarget)) {
+    dropZone.classList.remove('drag-over');
+  }
+});
+dropZone.addEventListener('drop', async (e) => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  
+  const files = e.dataTransfer?.files;
+  if (files && files.length > 0) {
+    await handlePdfFile(files[0]);
+  }
+});
+
+// Update the file input handler to use the new function
+el.file.onchange = async (e) => {
+  const f = e.target.files?.[0];
+  await handlePdfFile(f);
 };
 
 /* ====== Boot ====== */
