@@ -1443,6 +1443,7 @@ async function loadBundledFont(fontName) {
 
 /* ====== OCR functionality ====== */
 let ocrWorker = null;
+let ocrCurrentLang = null;
 
 function showSuccess(message, duration = 4000) {
   const toast = document.createElement('div');
@@ -1466,9 +1467,8 @@ async function initOCR() {
   if (progressText) progressText.textContent = 'Initializing OCR...';
   
   try {
-    ocrWorker = await Tesseract.createWorker({
-      langs: lang,
-      oem: 1,
+    // Tesseract.js v4.x API: createWorker(lang, oem, options)
+    ocrWorker = await Tesseract.createWorker(lang, 1, {
       logger: m => {
         if (m.status && progressText) {
           progressText.textContent = m.status;
@@ -1478,12 +1478,14 @@ async function initOCR() {
         }
       }
     });
+    ocrCurrentLang = lang;
     return ocrWorker;
   } catch (e) {
     const errorMsg = e?.message || String(e) || 'Unknown initialization error';
     showError('Failed to initialize OCR: ' + errorMsg);
     if (progress) progress.classList.remove('visible');
     ocrWorker = null;
+    ocrCurrentLang = null;
     return null;
   }
 }
@@ -1492,9 +1494,16 @@ async function performOCR(imageData) {
   const progress = document.getElementById('ocrProgress');
   const progressFill = document.getElementById('ocrProgressFill');
   const progressText = document.getElementById('ocrProgressText');
+  const lang = document.getElementById('ocrLang')?.value || 'eng';
   
   try {
-    if (!ocrWorker) {
+    // Reinitialize worker if language changed or worker is null
+    if (!ocrWorker || ocrCurrentLang !== lang) {
+      if (ocrWorker) {
+        try {
+          await ocrWorker.terminate();
+        } catch (termErr) { /* ignore termination errors */ }
+      }
       ocrWorker = await initOCR();
       if (!ocrWorker) return null;
     }
@@ -1513,6 +1522,7 @@ async function performOCR(imageData) {
       if (ocrWorker) await ocrWorker.terminate();
     } catch (termErr) { /* ignore termination errors */ }
     ocrWorker = null;
+    ocrCurrentLang = null;
     return null;
   }
 }
