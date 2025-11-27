@@ -1,15 +1,37 @@
 # Custom Fonts for PDF Text Editing
 
-This directory is for storing custom TrueType Font (TTF) files that can be used for exact font matching when editing PDF text.
+This directory contains TrueType Font (TTF) files that can be used for text editing in the PDF Editor.
+
+## Bundled Google Fonts
+
+The following fonts are pre-installed and available in the Font dropdown:
+
+| Font | Style | Usage |
+|------|-------|-------|
+| Roboto | Regular, Bold | Modern sans-serif, great for documents |
+| Open Sans | Regular, Bold, Italic | Highly readable sans-serif |
+| Lato | Regular, Bold, Italic | Elegant sans-serif |
+| Merriweather | Regular, Bold | Serif font, good for body text |
+| Source Sans Pro | Regular, Bold | Adobe's professional sans-serif |
+| Source Code Pro | Regular, Bold | Monospace, great for code |
+
+## Using Bundled Fonts
+
+1. Open the PDF Editor
+2. Select "Edit Text" tool
+3. Choose a font from the "Google Fonts (Bundled)" section in the Font dropdown
+4. Enter your text and draw a box on the PDF
 
 ## How Font Editing Works
 
 When you edit text in a PDF:
 1. The original text is **covered** with a white (or colored) rectangle
 2. New text is **placed on top** using your selected font
-3. For exact font matching, you need the original font file
+3. Bundled fonts are automatically embedded in the PDF
 
 ## Using Custom Fonts
+
+You can also upload your own fonts:
 
 ### Step 1: Obtain the Font File
 
@@ -24,39 +46,14 @@ You need a `.ttf` or `.otf` font file. Common sources:
 ### Step 2: Upload the Font
 
 In the PDF Editor:
-1. Select **"Custom TTF (upload)"** from the Font dropdown
+1. Select **"Upload TTF/OTF..."** from the Font dropdown
 2. Click the file picker that appears
 3. Select your `.ttf` or `.otf` file
 4. The font will be loaded for use in your session
 
-### Step 3: Use the Font
-
-1. Select the **"Edit Text"** tool
-2. Type your replacement text
-3. Draw a box over the text you want to replace
-4. The text will be rendered using your custom font
-
-## Pre-Installing Fonts (Optional)
-
-If you frequently use specific fonts, you can store them here for easy access:
-
-```
-/fonts/
-├── README.md           (this file)
-├── Arial.ttf           (example)
-├── Helvetica.ttf       (example)
-├── TimesNewRoman.ttf   (example)
-└── YourCustomFont.ttf  (your fonts)
-```
-
-**Note**: Font files stored here are not automatically loaded. You still need to upload them in the editor each session.
-
 ## Font Licensing
 
-⚠️ **Important**: Only use fonts you have a license to use:
-- System fonts may have usage restrictions
-- Commercial fonts require proper licensing
-- Google Fonts and other open-source fonts are safe for most uses
+⚠️ **Important**: The bundled fonts are open-source Google Fonts licensed under the SIL Open Font License (OFL) or Apache License 2.0. For custom fonts, ensure you have the appropriate license.
 
 ## Supported Formats
 
@@ -67,32 +64,37 @@ If you frequently use specific fonts, you can store them here for easy access:
 | TrueType Collection | `.ttc` | ⚠️ First font only |
 | OpenType Collection | `.otc` | ⚠️ First font only |
 
-**Note**: Collection files (`.ttc`/`.otc`) contain multiple fonts. The editor can only use the first font in the collection. Extract individual fonts if you need a specific variant.
-
 ## Troubleshooting
 
 ### Font doesn't look right
-- Some fonts have multiple weights (Light, Regular, Bold). Make sure you're using the correct weight file.
+- Some fonts have multiple weights (Light, Regular, Bold). Select the appropriate variant.
 - Variable fonts may not render all variations correctly.
 
-### Font upload fails
-- Check that the file is a valid `.ttf` or `.otf` file
-- File might be corrupted - try re-downloading
-- Some DRM-protected fonts cannot be embedded
+### Font not showing in dropdown
+- Bundled fonts require the font files to be present in `/fonts/` directory
+- Check that the file names match the expected names (e.g., `Roboto-Regular.ttf`)
 
-### Bold/Italic not working
-- You need separate font files for Bold and Italic variants
-- The editor can apply "faux" bold/italic, but it won't match true font variants
-- Example: Use `Arial-Bold.ttf` for bold text, not `Arial.ttf` with bold checkbox
+### Bold/Italic not working with bundled fonts
+- Select the Bold or Italic variant directly from the dropdown
+- Example: Use "Roboto Bold" instead of "Roboto" with bold checkbox
 
-## Common Fonts and Where to Find Them
+## Available Font Files
 
-| Font | Type | Source |
-|------|------|--------|
-| Roboto | Sans-serif | [Google Fonts](https://fonts.google.com/specimen/Roboto) |
-| Open Sans | Sans-serif | [Google Fonts](https://fonts.google.com/specimen/Open+Sans) |
-| Lato | Sans-serif | [Google Fonts](https://fonts.google.com/specimen/Lato) |
-| Merriweather | Serif | [Google Fonts](https://fonts.google.com/specimen/Merriweather) |
-| Source Code Pro | Monospace | [Google Fonts](https://fonts.google.com/specimen/Source+Code+Pro) |
-| Liberation Sans | Sans-serif | Free alternative to Arial |
-| Liberation Serif | Serif | Free alternative to Times New Roman |
+```
+/fonts/
+├── Roboto-Regular.ttf
+├── Roboto-Bold.ttf
+├── Roboto-Italic.ttf
+├── OpenSans-Regular.ttf
+├── OpenSans-Bold.ttf
+├── OpenSans-Italic.ttf
+├── Lato-Regular.ttf
+├── Lato-Bold.ttf
+├── Lato-Italic.ttf
+├── Merriweather-Regular.ttf
+├── Merriweather-Bold.ttf
+├── SourceSansPro-Regular.ttf
+├── SourceSansPro-Bold.ttf
+├── SourceCodePro-Regular.ttf
+└── SourceCodePro-Bold.ttf
+```

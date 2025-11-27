@@ -55,13 +55,15 @@
       id:'strokeWidth', type:'number', min:1, max:20, value:2, title:'Stroke width (px)'
     });
     strokeWidth.style.width = '72px';
-    el.tool.closest('.bar').appendChild(labelWrap('Stroke', strokeWidth));
+    const bar = el.tool.closest('.bar') || el.tool.closest('.sidebar-section');
+    if (bar) bar.appendChild(labelWrap('Stroke', strokeWidth));
   }
   // Dashed
   let strokeDashed = document.getElementById('strokeDashed');
   if (!strokeDashed){
     strokeDashed = Object.assign(document.createElement('input'), { id:'strokeDashed', type:'checkbox' });
-    el.tool.closest('.bar').appendChild(labelWrap('Dashed', strokeDashed));
+    const bar = el.tool.closest('.bar') || el.tool.closest('.sidebar-section');
+    if (bar) bar.appendChild(labelWrap('Dashed', strokeDashed));
   }
   // Units + Calibrate/Auto buttons (go in bar2)
   let unitSel = document.getElementById('units');
@@ -71,12 +73,16 @@
       const o=document.createElement('option'); o.value=u; o.textContent=u; unitSel.appendChild(o);
     });
     unitSel.value='mm';
-    el.snap.closest('.bar2').appendChild(labelWrap('Units', unitSel));
+    // Find a suitable container for drawing tools (sidebar or bar2)
+    const bar2 = el.snap.closest('.bar2') || el.snap.closest('.sidebar-section');
+    if (bar2) {
+      bar2.appendChild(labelWrap('Units', unitSel));
 
-    const btnCal = document.createElement('button'); btnCal.id='calibrate'; btnCal.textContent='Calibrate';
-    const btnAuto = document.createElement('button'); btnAuto.id='autoScale'; btnAuto.textContent='Auto Scale';
-    el.snap.closest('.bar2').appendChild(btnCal);
-    el.snap.closest('.bar2').appendChild(btnAuto);
+      const btnCal = document.createElement('button'); btnCal.id='calibrate'; btnCal.textContent='Calibrate';
+      const btnAuto = document.createElement('button'); btnAuto.id='autoScale'; btnAuto.textContent='Auto Scale';
+      bar2.appendChild(btnCal);
+      bar2.appendChild(btnAuto);
+    }
   }
 
   /* ----------------------- Scale state & helpers ----------------------- */

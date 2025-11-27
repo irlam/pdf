@@ -2,43 +2,110 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>PDF Editor — compact UI + page rotate</title>
+  <title>PDF Editor — Enhanced Layout</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <!-- Modern, compact UI -->
   <link rel="stylesheet"
         href="/assets/ui.css?v=<?=filemtime($_SERVER['DOCUMENT_ROOT'].'/assets/ui.css')?>">
 
-  <!-- Minimal page layout (keeps canvases sized correctly) -->
+  <!-- Tesseract.js for OCR (loaded from CDN) -->
+  <script src="https://unpkg.com/tesseract.js@v4.1.4/dist/tesseract.min.js" defer onerror="console.log('OCR: Tesseract.js not available')"></script>
+
+  <!-- Enhanced sidebar layout for better PDF viewing -->
   <style>
     :root{
       --bg:#0b1220; --card:#111827; --text:#e5e7eb; --border:#1f2937;
+      --sidebar-width:280px;
     }
-    html,body{ margin:0; background:var(--bg); color:var(--text);
+    html,body{ margin:0; background:var(--bg); color:var(--text); height:100%;
       font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,'Helvetica Neue',Arial,sans-serif;}
-    .wrap{ max-width:1200px; margin:18px auto; padding:0 14px;}
-    #viewerShell{ border:1px solid var(--border); border-radius:12px; background:#0e0e0e; padding:8px; position:relative; }
-    #scroller{ position:relative; overflow:auto; height:76vh; background:#111; border-radius:8px; }
-    #pageLayer{ position:relative; width:max-content; height:max-content; }
+    
+    /* Main layout: fixed header, sidebar + viewer */
+    .main-layout{ display:flex; height:calc(100vh - 50px); }
+    
+    /* Left sidebar for tools */
+    .sidebar{
+      width:var(--sidebar-width); min-width:var(--sidebar-width);
+      background:var(--card); border-right:1px solid var(--border);
+      overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:12px;
+    }
+    .sidebar-section{
+      background:#0f172a; border:1px solid var(--border); border-radius:10px; padding:10px;
+    }
+    .sidebar-section h4{ margin:0 0 8px; font-size:13px; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; }
+    .sidebar-section label{ display:flex; align-items:center; gap:6px; margin-bottom:6px; font-size:13px; }
+    .sidebar-section select, .sidebar-section input[type="text"], .sidebar-section input[type="number"]{
+      width:100%; background:#0b1220; color:var(--text); border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:13px;
+    }
+    .sidebar-section input[type="color"]{ width:32px; height:24px; padding:0; border:none; cursor:pointer; }
+    .sidebar-section input[type="checkbox"]{ width:16px; height:16px; accent-color:#3b82f6; }
+    .sidebar-section button{ width:100%; margin-top:4px; }
+    .sidebar-row{ display:flex; gap:6px; align-items:center; margin-bottom:6px; }
+    .sidebar-row label{ flex:1; margin-bottom:0; }
+    
+    /* Viewer area (takes remaining space) */
+    .viewer-area{
+      flex:1; display:flex; flex-direction:column; overflow:hidden;
+    }
+    
+    /* Top toolbar (file + quick actions) */
+    .top-toolbar{
+      background:var(--card); border-bottom:1px solid var(--border);
+      padding:8px 12px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+    }
+    .top-toolbar .drop-zone-input{ display:flex; align-items:center; gap:8px; }
+    
+    /* Viewer shell (maximized) */
+    #viewerShell{ flex:1; border:1px solid var(--border); border-radius:12px; background:#0e0e0e; padding:8px; position:relative; margin:8px; display:flex; flex-direction:column; }
+    #scroller{ flex:1; position:relative; overflow:auto; background:#111; border-radius:8px; }
+    #pageLayer{ position:relative; width:max-content; height:max-content; margin:auto; }
     #pdfCanvas{ display:block; background:#fff; border-radius:8px; }
     #overlayCanvas{ position:absolute; left:0; top:0; pointer-events:none; }
-    .muted{ color:#94a3b8; font-size:13px; margin-top:8px; }
+    
+    /* Bottom status bar */
+    .status-bar{
+      padding:6px 12px; background:var(--card); border-top:1px solid var(--border);
+      display:flex; align-items:center; gap:12px; font-size:12px; color:#94a3b8;
+    }
+    .status-bar .kbd{ padding:0 6px; border:1px solid var(--border); border-radius:6px; background:#0f172a; color:#cbd5e1; }
+    
+    /* Misc */
+    .muted{ color:#94a3b8; font-size:13px; }
     .kbd{ padding:0 6px; border:1px solid var(--border); border-radius:6px; background:#0f172a; color:#cbd5e1; }
-    /* Drag-and-drop styling */
-    .drop-zone{ display:flex; align-items:center; gap:8px; }
     .drop-zone.drag-over #viewerShell{ border:2px dashed #3b82f6; background:#0f172a; }
     #dropOverlay{ display:none; position:absolute; inset:0; background:rgba(59,130,246,0.15); border-radius:8px; z-index:100; align-items:center; justify-content:center; font-size:18px; color:#93c5fd; pointer-events:none; }
     .drag-over #dropOverlay{ display:flex; }
-    /* Progress/loading indicator */
+    
+    /* Loading/Progress indicator */
     #loadingIndicator{ display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:#1e293b; border:1px solid #3b82f6; border-radius:12px; padding:20px 32px; z-index:1000; color:#e5e7eb; font-size:16px; box-shadow:0 8px 32px rgba(0,0,0,0.5); }
     #loadingIndicator.visible{ display:flex; align-items:center; gap:12px; }
     .spinner{ width:24px; height:24px; border:3px solid #3b82f6; border-top-color:transparent; border-radius:50%; animation:spin 1s linear infinite; }
     @keyframes spin{ to{ transform:rotate(360deg); } }
-    /* Error message styling */
+    
+    /* Toast messages */
     .error-toast{ position:fixed; bottom:24px; right:24px; background:#7f1d1d; border:1px solid #ef4444; color:#fecaca; padding:12px 20px; border-radius:10px; z-index:1001; max-width:400px; box-shadow:0 4px 16px rgba(0,0,0,0.4); animation:slideIn 0.3s ease; }
-    /* Warning message styling */
     .warning-toast{ position:fixed; bottom:24px; right:24px; background:#78350f; border:1px solid #f59e0b; color:#fef3c7; padding:12px 20px; border-radius:10px; z-index:1001; max-width:400px; box-shadow:0 4px 16px rgba(0,0,0,0.4); animation:slideIn 0.3s ease; }
+    .success-toast{ position:fixed; bottom:24px; right:24px; background:#14532d; border:1px solid #22c55e; color:#bbf7d0; padding:12px 20px; border-radius:10px; z-index:1001; max-width:400px; box-shadow:0 4px 16px rgba(0,0,0,0.4); animation:slideIn 0.3s ease; }
     @keyframes slideIn{ from{ transform:translateX(100%); opacity:0; } to{ transform:translateX(0); opacity:1; } }
+    
+    /* OCR progress */
+    #ocrProgress{ display:none; background:#1e293b; border:1px solid #3b82f6; border-radius:8px; padding:8px; margin-top:8px; }
+    #ocrProgress.visible{ display:block; }
+    #ocrProgress .progress-bar{ height:6px; background:#1e3a5f; border-radius:3px; overflow:hidden; }
+    #ocrProgress .progress-fill{ height:100%; background:#3b82f6; width:0%; transition:width 0.2s; }
+    #ocrProgress .progress-text{ font-size:11px; color:#94a3b8; margin-top:4px; }
+    
+    /* Sidebar toggle for mobile */
+    .sidebar-toggle{ display:none; background:var(--card); border:1px solid var(--border); border-radius:8px; padding:8px 12px; cursor:pointer; color:var(--text); }
+    @media (max-width: 900px){
+      .sidebar{ position:absolute; left:0; top:0; height:100%; z-index:50; transform:translateX(-100%); transition:transform 0.3s; }
+      .sidebar.open{ transform:translateX(0); }
+      .sidebar-toggle{ display:block; }
+    }
+    
+    /* Legacy support for bar classes (for addon compatibility) */
+    .bar, .bar2, .bar3{ display:none; }
   </style>
 </head>
 <body>
@@ -58,127 +125,221 @@
   </nav>
 </header>
 
-<div class="wrap drop-zone" id="dropZone">
-  <!-- Toolbar 1: tools & text -->
-  <div class="bar">
-    <div class="drop-zone-input">
-      <input id="file" type="file" accept="application/pdf" />
-      <span class="muted" style="margin-left:8px">or drag & drop PDF here</span>
-    </div>
-
-    <label>Tool:
+<div class="main-layout drop-zone" id="dropZone">
+  <!-- Left Sidebar: All tools -->
+  <aside class="sidebar" id="sidebar">
+    <!-- Tool Selection -->
+    <div class="sidebar-section">
+      <h4>🔧 Tool</h4>
       <select id="tool">
-        <option value="select">Select / Move / Resize / Rotate</option>
-        <option value="editText">Edit Text (cover + retype)</option>
-        <option value="redact">Redact (drag box)</option>
-        <option value="image">Place/Replace Image (drag box)</option>
-        <option value="watermark">Watermark / Stamp</option>
-        <option value="find">Find (click text run)</option>
+        <option value="select">Select / Move / Resize</option>
+        <option value="editText">Edit Text</option>
+        <option value="redact">Redact</option>
+        <option value="image">Place Image</option>
+        <option value="watermark">Watermark</option>
+        <option value="find">Find Text</option>
+        <option value="ocr">OCR (Extract Text)</option>
       </select>
-    </label>
-
-    <label>Font:
-      <select id="fontFamily">
-        <option value="Helvetica">Helvetica (sans)</option>
-        <option value="TimesRoman">Times (serif)</option>
-        <option value="Courier">Courier (mono)</option>
-        <option value="Custom">Custom TTF (upload)</option>
-      </select>
-    </label>
-    <label>Size <input id="fontSize" type="number" min="6" max="120" step="1" value="12" style="width:72px" /></label>
-    <label>Align
-      <select id="textAlign">
-        <option value="left">Left</option>
-        <option value="center">Center</option>
-        <option value="right">Right</option>
-      </select>
-    </label>
-    <label><input id="bold" type="checkbox"> Bold*</label>
-    <label><input id="italic" type="checkbox"> Italic*</label>
-    <input id="customFont" type="file" accept=".ttf,.otf,.ttc,.otc" style="max-width:230px" />
-
-    <input id="textValue" type="text" placeholder="New text…" style="min-width:220px" />
-    <label>Text <input id="textColor" type="color" value="#000000" /></label>
-    <label>Cover <input id="paintColor" type="color" value="#ffffff" /></label>
-    <label>Redact <input id="redactColor" type="color" value="#000000" /></label>
-
-    <!-- image picker (shown only when Image tool is active) -->
-    <input id="imgFile" type="file" accept="image/*" />
-  </div>
-
-  <!-- Toolbar 2: zoom, rotate (items 90°), rotate page 90°, grid/snap, find -->
-  <div class="bar2">
-    <div class="btn-group">
-      <button id="zoomOut">−</button>
-      <span id="zoomPct" class="chip">100%</span>
-      <button id="zoomIn">+</button>
-    </div>
-    <button id="zoomReset">Reset</button>
-
-    <!-- Item rotation (selected overlays) — 90° steps -->
-    <div class="btn-group">
-      <button id="rotL" class="btn-amber" title="Rotate item -90°">⟲ Item</button>
-      <span class="chip mini">Rotate</span>
-      <button id="rotR" class="btn-amber" title="Rotate item +90°">⟳ Item</button>
     </div>
 
-    <!-- Page rotation (visual + persisted on Apply) — 90° steps -->
-    <div class="btn-group">
-      <button id="pageRotL" class="btn-amber" title="Rotate page -90°">⟲ Page</button>
-      <span class="chip mini">Page</span>
-      <button id="pageRotR" class="btn-amber" title="Rotate page +90°">⟳ Page</button>
-    </div>
-
-    <label><input type="checkbox" id="snap"> Snap</label>
-    <label>Grid <input id="gridSize" type="number" min="2" max="64" step="1" value="8" style="width:72px" /></label>
-    <label><input type="checkbox" id="showGrid"> Show grid</label>
-
-    <span class="sp"></span>
-    <input id="findInput" type="text" placeholder="Find text…" />
-    <button id="findNext">Find Next</button>
-    <span id="findCount" class="muted"></span>
-  </div>
-
-  <!-- Toolbar 3: selection ops, page ops, save -->
-  <div class="bar3">
-    <button id="undo">⟲ Undo</button>
-    <button id="redo">⟳ Redo</button>
-    <button id="duplicate">⧉ Duplicate</button>
-    <button id="delete" class="danger">🗑 Delete</button>
-
-    <span class="sp"></span>
-    <button id="pageInsertBefore">+ Blank Before</button>
-    <button id="pageInsertAfter">+ Blank After</button>
-    <button id="pageDuplicate">Duplicate Page</button>
-    <button id="pageDelete" class="danger">Delete Page</button>
-    <button id="pageUp">Move ▲</button>
-    <button id="pageDown">Move ▼</button>
-    <span id="pageInfo">—</span>
-
-    <span class="sp"></span>
-    <input id="versionName" type="text" placeholder="Version name (e.g., revA)" />
-    <input id="keepN" type="number" min="1" max="20" value="5" title="Keep last N versions" style="width:72px" />
-    <button id="apply">Apply to PDF</button>
-    <button id="download">Download</button>
-    <button id="save">Save (Upload)</button>
-  </div>
-
-  <!-- Viewer -->
-  <div id="viewerShell">
-    <div id="dropOverlay">📄 Drop PDF file here</div>
-    <div id="scroller">
-      <div id="pageLayer">
-        <canvas id="pdfCanvas"></canvas>
-        <canvas id="overlayCanvas"></canvas>
+    <!-- Text Settings -->
+    <div class="sidebar-section" id="textSettings">
+      <h4>✏️ Text</h4>
+      <label>Font:
+        <select id="fontFamily">
+          <optgroup label="Standard">
+            <option value="Helvetica">Helvetica (sans)</option>
+            <option value="TimesRoman">Times (serif)</option>
+            <option value="Courier">Courier (mono)</option>
+          </optgroup>
+          <optgroup label="Google Fonts (Bundled)">
+            <option value="Roboto">Roboto</option>
+            <option value="Roboto-Bold">Roboto Bold</option>
+            <option value="OpenSans">Open Sans</option>
+            <option value="OpenSans-Bold">Open Sans Bold</option>
+            <option value="Lato">Lato</option>
+            <option value="Lato-Bold">Lato Bold</option>
+            <option value="Merriweather">Merriweather (serif)</option>
+            <option value="SourceSansPro">Source Sans Pro</option>
+            <option value="SourceCodePro">Source Code Pro (mono)</option>
+          </optgroup>
+          <optgroup label="Custom">
+            <option value="Custom">Upload TTF/OTF...</option>
+          </optgroup>
+        </select>
+      </label>
+      <input id="customFont" type="file" accept=".ttf,.otf,.ttc,.otc" style="display:none" />
+      <div class="sidebar-row">
+        <label>Size: <input id="fontSize" type="number" min="6" max="120" step="1" value="12" style="width:60px" /></label>
+        <label>Align:
+          <select id="textAlign" style="width:70px">
+            <option value="left">Left</option>
+            <option value="center">Center</option>
+            <option value="right">Right</option>
+          </select>
+        </label>
+      </div>
+      <div class="sidebar-row">
+        <label><input id="bold" type="checkbox"> Bold</label>
+        <label><input id="italic" type="checkbox"> Italic</label>
+      </div>
+      <input id="textValue" type="text" placeholder="Enter text…" />
+      <div class="sidebar-row" style="margin-top:6px">
+        <label>Text: <input id="textColor" type="color" value="#000000" /></label>
+        <label>Cover: <input id="paintColor" type="color" value="#ffffff" /></label>
       </div>
     </div>
-    <div class="muted">
-      Tips: Hold <span class="kbd">Space</span> to pan. Wheel = zoom. <span class="kbd">Arrows</span> nudge; <span class="kbd">Shift</span>=10px; <span class="kbd">Alt+Arrows</span>=resize.
-      Rotate <b>items</b> via buttons or <span class="kbd">Alt+R</span> (+90° / <span class="kbd">Alt+Shift+R</span> −90°).  
-      Rotate the <b>page</b> via “Page” buttons or <span class="kbd">Alt+P</span> (+90° / <span class="kbd">Alt+Shift+P</span> −90°).  
-      *Bold/Italic are faux unless you upload matching TTFs as Custom.
+
+    <!-- Redact Settings -->
+    <div class="sidebar-section" id="redactSettings">
+      <h4>🔒 Redact</h4>
+      <label>Color: <input id="redactColor" type="color" value="#000000" /></label>
     </div>
-  </div>
+
+    <!-- Image Settings -->
+    <div class="sidebar-section" id="imageSettings">
+      <h4>🖼️ Image</h4>
+      <input id="imgFile" type="file" accept="image/*" />
+    </div>
+
+    <!-- OCR Settings -->
+    <div class="sidebar-section" id="ocrSettings">
+      <h4>📝 OCR</h4>
+      <label>Language:
+        <select id="ocrLang">
+          <option value="eng">English</option>
+          <option value="fra">French</option>
+          <option value="deu">German</option>
+          <option value="spa">Spanish</option>
+          <option value="ita">Italian</option>
+          <option value="por">Portuguese</option>
+          <option value="nld">Dutch</option>
+          <option value="pol">Polish</option>
+          <option value="rus">Russian</option>
+          <option value="jpn">Japanese</option>
+          <option value="chi_sim">Chinese (Simplified)</option>
+          <option value="ara">Arabic</option>
+        </select>
+      </label>
+      <button id="ocrPage" class="btn-primary">OCR Current Page</button>
+      <button id="ocrSelection">OCR Selection</button>
+      <div id="ocrProgress">
+        <div class="progress-bar"><div class="progress-fill" id="ocrProgressFill"></div></div>
+        <div class="progress-text" id="ocrProgressText">Initializing...</div>
+      </div>
+    </div>
+
+    <!-- Find Settings -->
+    <div class="sidebar-section" id="findSettings">
+      <h4>🔍 Find</h4>
+      <input id="findInput" type="text" placeholder="Search text…" />
+      <button id="findNext">Find Next</button>
+      <span id="findCount" class="muted"></span>
+    </div>
+
+    <!-- Zoom & View -->
+    <div class="sidebar-section">
+      <h4>🔎 View</h4>
+      <div class="sidebar-row">
+        <button id="zoomOut" style="width:auto;padding:6px 12px">−</button>
+        <span id="zoomPct" class="chip" style="flex:1;text-align:center">100%</span>
+        <button id="zoomIn" style="width:auto;padding:6px 12px">+</button>
+      </div>
+      <button id="zoomReset">Reset Zoom</button>
+      <div class="sidebar-row" style="margin-top:8px">
+        <label><input type="checkbox" id="snap"> Snap</label>
+        <label><input type="checkbox" id="showGrid"> Grid</label>
+      </div>
+      <label>Grid size: <input id="gridSize" type="number" min="2" max="64" step="1" value="8" style="width:60px" /></label>
+    </div>
+
+    <!-- Rotation -->
+    <div class="sidebar-section">
+      <h4>🔄 Rotate</h4>
+      <div class="sidebar-row">
+        <button id="rotL" class="btn-amber" style="flex:1" title="Rotate item -90°">⟲ Item</button>
+        <button id="rotR" class="btn-amber" style="flex:1" title="Rotate item +90°">⟳ Item</button>
+      </div>
+      <div class="sidebar-row">
+        <button id="pageRotL" class="btn-amber" style="flex:1" title="Rotate page -90°">⟲ Page</button>
+        <button id="pageRotR" class="btn-amber" style="flex:1" title="Rotate page +90°">⟳ Page</button>
+      </div>
+    </div>
+
+    <!-- Selection Actions -->
+    <div class="sidebar-section">
+      <h4>✂️ Selection</h4>
+      <div class="sidebar-row">
+        <button id="undo" style="flex:1">⟲ Undo</button>
+        <button id="redo" style="flex:1">⟳ Redo</button>
+      </div>
+      <div class="sidebar-row">
+        <button id="duplicate" style="flex:1">⧉ Copy</button>
+        <button id="delete" class="danger" style="flex:1">🗑 Delete</button>
+      </div>
+    </div>
+
+    <!-- Page Operations -->
+    <div class="sidebar-section">
+      <h4>📄 Page</h4>
+      <div class="sidebar-row">
+        <button id="pageInsertBefore" style="flex:1">+ Before</button>
+        <button id="pageInsertAfter" style="flex:1">+ After</button>
+      </div>
+      <div class="sidebar-row">
+        <button id="pageDuplicate" style="flex:1">Duplicate</button>
+        <button id="pageDelete" class="danger" style="flex:1">Delete</button>
+      </div>
+      <div class="sidebar-row">
+        <button id="pageUp" style="flex:1">▲ Move Up</button>
+        <button id="pageDown" style="flex:1">▼ Move Down</button>
+      </div>
+    </div>
+
+    <!-- Save/Export -->
+    <div class="sidebar-section">
+      <h4>💾 Save</h4>
+      <input id="versionName" type="text" placeholder="Version name (optional)" />
+      <label>Keep versions: <input id="keepN" type="number" min="1" max="20" value="5" style="width:60px" /></label>
+      <button id="apply" class="btn-primary">Apply Changes</button>
+      <button id="download" class="btn-primary">Download PDF</button>
+      <button id="save">Save to Server</button>
+    </div>
+  </aside>
+
+  <!-- Viewer Area -->
+  <main class="viewer-area">
+    <!-- Top toolbar: file input + page navigation -->
+    <div class="top-toolbar">
+      <button class="sidebar-toggle" id="sidebarToggle">☰ Tools</button>
+      <div class="drop-zone-input">
+        <input id="file" type="file" accept="application/pdf" />
+        <span class="muted">or drag & drop PDF</span>
+      </div>
+      <span id="pageInfo" style="margin-left:auto">—</span>
+    </div>
+
+    <!-- Viewer Shell -->
+    <div id="viewerShell">
+      <div id="dropOverlay">📄 Drop PDF file here</div>
+      <div id="scroller">
+        <div id="pageLayer">
+          <canvas id="pdfCanvas"></canvas>
+          <canvas id="overlayCanvas"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Status bar -->
+    <div class="status-bar">
+      <span><span class="kbd">Space</span> pan</span>
+      <span><span class="kbd">Ctrl+Wheel</span> zoom</span>
+      <span><span class="kbd">Alt+R</span> rotate item</span>
+      <span><span class="kbd">Alt+P</span> rotate page</span>
+      <span><span class="kbd">G</span> grid</span>
+      <span><span class="kbd">S</span> snap</span>
+    </div>
+  </main>
 </div>
 
 <!-- PDF.js (self-hosted UMD) -->
@@ -958,10 +1119,18 @@ async function applyEditsToPdf(){
       // cover background first
       page.drawRectangle({ x:r.x, y:r.y, width:r.w, height:r.h, color: hexToRgb(it.cover||'#FFFFFF'), rotate:rot });
 
-      // choose font
+      // choose font (supports standard, custom, and bundled fonts)
       let font = null;
-      if (it.fontFamily==='Custom' && customFontEmbedded) font = customFontEmbedded;
-      else {
+      if (it.fontFamily==='Custom' && customFontEmbedded) {
+        font = customFontEmbedded;
+      } else if (bundledFonts && bundledFonts[it.fontFamily]) {
+        // Load bundled font
+        const fontBytes = await loadBundledFont(it.fontFamily);
+        if (fontBytes) {
+          font = await pdfDocWriter.embedFont(fontBytes);
+        }
+      }
+      if (!font) {
         const S = PDFLib.StandardFonts;
         const map = { Helvetica:S.Helvetica, TimesRoman:S.TimesRoman, Courier:S.Courier };
         font = await pdfDocWriter.embedFont(map[it.fontFamily]||S.Helvetica);
@@ -989,8 +1158,15 @@ async function applyEditsToPdf(){
     else if (it.type === 'watermark'){
       // Watermark: semi-transparent text with rotation
       let font = null;
-      if (it.fontFamily==='Custom' && customFontEmbedded) font = customFontEmbedded;
-      else {
+      if (it.fontFamily==='Custom' && customFontEmbedded) {
+        font = customFontEmbedded;
+      } else if (bundledFonts && bundledFonts[it.fontFamily]) {
+        const fontBytes = await loadBundledFont(it.fontFamily);
+        if (fontBytes) {
+          font = await pdfDocWriter.embedFont(fontBytes);
+        }
+      }
+      if (!font) {
         const S = PDFLib.StandardFonts;
         const map = { Helvetica:S.Helvetica, TimesRoman:S.TimesRoman, Courier:S.Courier };
         font = await pdfDocWriter.embedFont(map[it.fontFamily]||S.Helvetica);
@@ -1080,10 +1256,24 @@ el.customFont.onchange = async (e)=>{
 
 function contextualizeUI(){
   const tool = el.tool.value;
-  el.imgFile.classList.toggle('hidden', tool !== 'image');
-  el.findInput.classList.toggle('hidden', tool !== 'find');
-  el.findNext.classList.toggle('hidden', tool !== 'find');
-  document.getElementById('customFont').classList.toggle('hidden', el.fontFamily.value !== 'Custom');
+  // Show/hide tool-specific sections
+  const textSettings = document.getElementById('textSettings');
+  const redactSettings = document.getElementById('redactSettings');
+  const imageSettings = document.getElementById('imageSettings');
+  const ocrSettings = document.getElementById('ocrSettings');
+  const findSettings = document.getElementById('findSettings');
+  
+  if (textSettings) textSettings.style.display = ['editText', 'watermark'].includes(tool) ? 'block' : 'none';
+  if (redactSettings) redactSettings.style.display = tool === 'redact' ? 'block' : 'none';
+  if (imageSettings) imageSettings.style.display = tool === 'image' ? 'block' : 'none';
+  if (ocrSettings) ocrSettings.style.display = tool === 'ocr' ? 'block' : 'none';
+  if (findSettings) findSettings.style.display = tool === 'find' ? 'block' : 'none';
+  
+  // Show custom font input when Custom is selected
+  const customFontInput = document.getElementById('customFont');
+  if (customFontInput) {
+    customFontInput.style.display = el.fontFamily.value === 'Custom' ? 'block' : 'none';
+  }
 }
 el.tool.addEventListener('change', contextualizeUI);
 el.fontFamily.addEventListener('change', contextualizeUI);
@@ -1201,6 +1391,166 @@ el.snap.checked = settings.snap;
 el.gridSize.value = settings.grid;
 el.showGrid.checked = settings.showGrid;
 contextualizeUI();
+
+/* ====== Sidebar toggle for mobile ====== */
+const sidebarToggle = document.getElementById('sidebarToggle');
+const sidebar = document.getElementById('sidebar');
+if (sidebarToggle && sidebar) {
+  sidebarToggle.onclick = () => sidebar.classList.toggle('open');
+}
+
+/* ====== Bundled font loading ====== */
+const bundledFonts = {
+  'Roboto': '/fonts/Roboto-Regular.ttf',
+  'Roboto-Bold': '/fonts/Roboto-Bold.ttf',
+  'OpenSans': '/fonts/OpenSans-Regular.ttf',
+  'OpenSans-Bold': '/fonts/OpenSans-Bold.ttf',
+  'Lato': '/fonts/Lato-Regular.ttf',
+  'Lato-Bold': '/fonts/Lato-Bold.ttf',
+  'Merriweather': '/fonts/Merriweather-Regular.ttf',
+  'SourceSansPro': '/fonts/SourceSansPro-Regular.ttf',
+  'SourceCodePro': '/fonts/SourceCodePro-Regular.ttf'
+};
+const loadedFonts = new Map(); // Cache loaded fonts
+
+async function loadBundledFont(fontName) {
+  if (loadedFonts.has(fontName)) return loadedFonts.get(fontName);
+  const path = bundledFonts[fontName];
+  if (!path) return null;
+  try {
+    const resp = await fetch(path);
+    if (!resp.ok) throw new Error('Font not found');
+    const bytes = new Uint8Array(await resp.arrayBuffer());
+    loadedFonts.set(fontName, bytes);
+    return bytes;
+  } catch (e) {
+    console.warn('Failed to load font:', fontName, e);
+    return null;
+  }
+}
+
+/* ====== OCR functionality ====== */
+let ocrWorker = null;
+
+function showSuccess(message, duration = 4000) {
+  const toast = document.createElement('div');
+  toast.className = 'success-toast';
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), duration);
+}
+
+async function initOCR() {
+  if (typeof Tesseract === 'undefined') {
+    showError('OCR not available. Tesseract.js failed to load.');
+    return null;
+  }
+  const lang = document.getElementById('ocrLang')?.value || 'eng';
+  const progress = document.getElementById('ocrProgress');
+  const progressFill = document.getElementById('ocrProgressFill');
+  const progressText = document.getElementById('ocrProgressText');
+  
+  if (progress) progress.classList.add('visible');
+  if (progressText) progressText.textContent = 'Initializing OCR...';
+  
+  try {
+    ocrWorker = await Tesseract.createWorker(lang, 1, {
+      logger: m => {
+        if (m.status && progressText) {
+          progressText.textContent = m.status;
+        }
+        if (m.progress && progressFill) {
+          progressFill.style.width = Math.round(m.progress * 100) + '%';
+        }
+      }
+    });
+    return ocrWorker;
+  } catch (e) {
+    showError('Failed to initialize OCR: ' + e.message);
+    if (progress) progress.classList.remove('visible');
+    return null;
+  }
+}
+
+async function performOCR(imageData) {
+  const progress = document.getElementById('ocrProgress');
+  const progressFill = document.getElementById('ocrProgressFill');
+  const progressText = document.getElementById('ocrProgressText');
+  
+  try {
+    if (!ocrWorker) {
+      ocrWorker = await initOCR();
+      if (!ocrWorker) return null;
+    }
+    
+    if (progressText) progressText.textContent = 'Recognizing text...';
+    const result = await ocrWorker.recognize(imageData);
+    
+    if (progress) progress.classList.remove('visible');
+    return result.data;
+  } catch (e) {
+    showError('OCR failed: ' + e.message);
+    if (progress) progress.classList.remove('visible');
+    return null;
+  }
+}
+
+// OCR current page button
+const ocrPageBtn = document.getElementById('ocrPage');
+if (ocrPageBtn) {
+  ocrPageBtn.onclick = async () => {
+    if (!pdfDocRender) {
+      showError('Please load a PDF first');
+      return;
+    }
+    
+    showLoading('Preparing page for OCR...');
+    
+    // Render current page to canvas at higher resolution for better OCR
+    const page = await pdfDocRender.getPage(currentPageIndex + 1);
+    const scale = 2; // Higher resolution for better OCR
+    const vp = page.getViewport({ scale });
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = vp.width;
+    canvas.height = vp.height;
+    const ctx = canvas.getContext('2d');
+    
+    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    hideLoading();
+    
+    const ocrResult = await performOCR(canvas);
+    if (ocrResult && ocrResult.text) {
+      // Show OCR result in a modal or copy to clipboard
+      const text = ocrResult.text.trim();
+      if (text) {
+        try {
+          await navigator.clipboard.writeText(text);
+          showSuccess(`OCR complete! ${ocrResult.words?.length || 0} words copied to clipboard.`);
+        } catch (e) {
+          // Fallback: show in alert
+          alert('OCR Result:\n\n' + text);
+        }
+      } else {
+        showWarning('No text detected on this page.');
+      }
+    }
+  };
+}
+
+// OCR selection button
+const ocrSelBtn = document.getElementById('ocrSelection');
+if (ocrSelBtn) {
+  ocrSelBtn.onclick = () => {
+    if (!pdfDocRender) {
+      showError('Please load a PDF first');
+      return;
+    }
+    showWarning('Draw a selection box on the page, then click this button again.');
+    el.tool.value = 'select'; // Switch to select tool
+    contextualizeUI();
+  };
+}
 </script>
 
 <!-- Shape drawing tools: Box, Line, Arrow, Dimension -->
