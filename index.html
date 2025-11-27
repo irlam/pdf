@@ -155,13 +155,19 @@
           <optgroup label="Google Fonts (Bundled)">
             <option value="Roboto">Roboto</option>
             <option value="Roboto-Bold">Roboto Bold</option>
+            <option value="Roboto-Italic">Roboto Italic</option>
             <option value="OpenSans">Open Sans</option>
             <option value="OpenSans-Bold">Open Sans Bold</option>
+            <option value="OpenSans-Italic">Open Sans Italic</option>
             <option value="Lato">Lato</option>
             <option value="Lato-Bold">Lato Bold</option>
+            <option value="Lato-Italic">Lato Italic</option>
             <option value="Merriweather">Merriweather (serif)</option>
+            <option value="Merriweather-Bold">Merriweather Bold</option>
             <option value="SourceSansPro">Source Sans Pro</option>
+            <option value="SourceSansPro-Bold">Source Sans Pro Bold</option>
             <option value="SourceCodePro">Source Code Pro (mono)</option>
+            <option value="SourceCodePro-Bold">Source Code Pro Bold</option>
           </optgroup>
           <optgroup label="Custom">
             <option value="Custom">Upload TTF/OTF...</option>
@@ -1403,13 +1409,19 @@ if (sidebarToggle && sidebar) {
 const bundledFonts = {
   'Roboto': '/fonts/Roboto-Regular.ttf',
   'Roboto-Bold': '/fonts/Roboto-Bold.ttf',
+  'Roboto-Italic': '/fonts/Roboto-Italic.ttf',
   'OpenSans': '/fonts/OpenSans-Regular.ttf',
   'OpenSans-Bold': '/fonts/OpenSans-Bold.ttf',
+  'OpenSans-Italic': '/fonts/OpenSans-Italic.ttf',
   'Lato': '/fonts/Lato-Regular.ttf',
   'Lato-Bold': '/fonts/Lato-Bold.ttf',
+  'Lato-Italic': '/fonts/Lato-Italic.ttf',
   'Merriweather': '/fonts/Merriweather-Regular.ttf',
+  'Merriweather-Bold': '/fonts/Merriweather-Bold.ttf',
   'SourceSansPro': '/fonts/SourceSansPro-Regular.ttf',
-  'SourceCodePro': '/fonts/SourceCodePro-Regular.ttf'
+  'SourceSansPro-Bold': '/fonts/SourceSansPro-Bold.ttf',
+  'SourceCodePro': '/fonts/SourceCodePro-Regular.ttf',
+  'SourceCodePro-Bold': '/fonts/SourceCodePro-Bold.ttf'
 };
 const loadedFonts = new Map(); // Cache loaded fonts
 
@@ -1538,17 +1550,77 @@ if (ocrPageBtn) {
   };
 }
 
-// OCR selection button
+// OCR selection button - performs OCR on currently selected area
+let ocrSelectionMode = false;
 const ocrSelBtn = document.getElementById('ocrSelection');
 if (ocrSelBtn) {
-  ocrSelBtn.onclick = () => {
+  ocrSelBtn.onclick = async () => {
     if (!pdfDocRender) {
       showError('Please load a PDF first');
       return;
     }
-    showWarning('Draw a selection box on the page, then click this button again.');
-    el.tool.value = 'select'; // Switch to select tool
-    contextualizeUI();
+    
+    // Check if there's a selection (selectedIds has items)
+    if (selectedIds.length === 0) {
+      // No selection - prompt user to draw one
+      showWarning('Draw a selection box on the page first, then click OCR Selection again.');
+      el.tool.value = 'redact'; // Switch to redact tool for drawing boxes
+      contextualizeUI();
+      ocrSelectionMode = true;
+      return;
+    }
+    
+    // Get the bounding box of selected items
+    const gb = groupBox();
+    if (!gb) {
+      showError('Could not determine selection area');
+      return;
+    }
+    
+    showLoading('Preparing selection for OCR...');
+    
+    // Render current page to canvas at higher resolution
+    const page = await pdfDocRender.getPage(currentPageIndex + 1);
+    const scale = 2;
+    const vp = page.getViewport({ scale });
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = vp.width;
+    canvas.height = vp.height;
+    const ctx = canvas.getContext('2d');
+    
+    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    
+    // Crop to selection area
+    const cropCanvas = document.createElement('canvas');
+    const cropX = Math.round(gb.x * scale * dpr());
+    const cropY = Math.round(gb.y * scale * dpr());
+    const cropW = Math.round(gb.w * scale * dpr());
+    const cropH = Math.round(gb.h * scale * dpr());
+    
+    cropCanvas.width = cropW;
+    cropCanvas.height = cropH;
+    const cropCtx = cropCanvas.getContext('2d');
+    cropCtx.drawImage(canvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+    
+    hideLoading();
+    
+    const ocrResult = await performOCR(cropCanvas);
+    if (ocrResult && ocrResult.text) {
+      const text = ocrResult.text.trim();
+      if (text) {
+        try {
+          await navigator.clipboard.writeText(text);
+          showSuccess(`OCR complete! Text copied to clipboard.`);
+        } catch (e) {
+          alert('OCR Result:\n\n' + text);
+        }
+      } else {
+        showWarning('No text detected in the selected area.');
+      }
+    }
+    
+    ocrSelectionMode = false;
   };
 }
 </script>
