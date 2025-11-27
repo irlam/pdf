@@ -1480,8 +1480,10 @@ async function initOCR() {
     });
     return ocrWorker;
   } catch (e) {
-    showError('Failed to initialize OCR: ' + e.message);
+    const errorMsg = e?.message || String(e) || 'Unknown initialization error';
+    showError('Failed to initialize OCR: ' + errorMsg);
     if (progress) progress.classList.remove('visible');
+    ocrWorker = null;
     return null;
   }
 }
@@ -1503,8 +1505,14 @@ async function performOCR(imageData) {
     if (progress) progress.classList.remove('visible');
     return result.data;
   } catch (e) {
-    showError('OCR failed: ' + e.message);
+    const errorMsg = e?.message || String(e) || 'Unknown error';
+    showError('OCR failed: ' + errorMsg);
     if (progress) progress.classList.remove('visible');
+    // Reset worker on error to prevent reusing a broken worker
+    try {
+      if (ocrWorker) await ocrWorker.terminate();
+    } catch (termErr) { /* ignore termination errors */ }
+    ocrWorker = null;
     return null;
   }
 }
