@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Help — PDF Editor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/assets/ui.css">
+  <style>
+    body{ background:var(--bg); color:var(--text); font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif; margin:0; }
+    .wrap{ max-width:980px; margin:24px auto; padding:0 16px; }
+    .lead{ color:var(--muted); margin-top:6px; }
+    .toc{ display:flex; flex-wrap:wrap; gap:12px; }
+    .toc a{ color:#93c5fd; text-decoration:none; }
+    .toc a:hover{ text-decoration:underline; }
+    .kbd{ padding:2px 6px; border:1px solid var(--border); border-radius:6px; background:#0b1220; color:#cbd5e1; }
+    .callout{ border-left:4px solid #60a5fa; padding:12px 12px; background:#0f172a; border-radius:8px; }
+  </style>
+</head>
+<body>
+<header class="topnav">
+  <div class="brand">PDF Editor — Help</div>
+  <nav>
+    <a href="index.html">Editor</a>
+    <a href="export.html">Exports</a>
+  </nav>
+</header>
+
+<div class="wrap help">
+  <h1>Help</h1>
+  <p class="lead">True content editing with PDF.js rendering, staged overlays, measurements, and exports.</p>
+
+  <div class="section">
+    <h2>Contents</h2>
+    <div class="toc">
+      <a href="#quickstart">Quick start</a>
+      <a href="#tools">Tools overview</a>
+      <a href="#drawing">Drawing &amp; measurement</a>
+      <a href="#scale">Scale detection &amp; calibration</a>
+      <a href="#snap-grid">Snap, grid &amp; guides</a>
+      <a href="#pages">Page operations</a>
+      <a href="#apply-save">Apply, Save, Download</a>
+      <a href="#exports">Exports (Text CSV/JSON, SVG/DXF)</a>
+      <a href="#shortcuts">Keyboard shortcuts</a>
+      <a href="#troubleshoot">Troubleshooting</a>
+    </div>
+  </div>
+
+  <div id="quickstart" class="section">
+    <h2>Quick start</h2>
+    <ol>
+      <li>Open <span class="kbd">Editor</span> and choose a PDF with the file picker.</li>
+      <li>Select a <b>Tool</b>:
+        <ul>
+          <li><b>Edit Text</b> — drag a box over existing text to cover &amp; retype.</li>
+          <li><b>Redact</b> — draw black boxes.</li>
+          <li><b>Image</b> — pick an image then drag its box.</li>
+          <li><b>Box / Line / Arrow / Dimension</b> — annotate drawings.</li>
+          <li><b>Find</b> — click a text run to grab it into a text box.</li>
+        </ul>
+      </li>
+      <li>Tune appearance (font, size, colors). For drawing tools set <b>Stroke</b>, <b>Dashed</b>.</li>
+      <li>Use <b>Snap</b> and <b>Show grid</b> for precise layout.</li>
+      <li>Press <b>Apply to PDF</b> to burn staged items into the PDF.</li>
+      <li>Optionally <b>Save (Upload)</b> to your server, or <b>Download</b> a copy.</li>
+    </ol>
+  </div>
+
+  <div id="tools" class="section">
+    <h2>Tools overview</h2>
+    <table>
+      <thead><tr><th>Tool</th><th>What it does</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><b>Select</b></td><td>Move, resize, rotate items. Multi-select with <span class="kbd">Shift</span>.</td><td>Nudge with arrows; <span class="kbd">Alt</span>+arrows resizes.</td></tr>
+        <tr><td><b>Edit Text</b></td><td>Covers existing content and writes new text.</td><td>Upload <b>Custom TTF</b> for exact fonts. Bold/Italic are faux unless a matching face is provided.</td></tr>
+        <tr><td><b>Redact</b></td><td>Draw opaque rectangles (default black).</td><td>Rendered permanently on Apply.</td></tr>
+        <tr><td><b>Image</b></td><td>Embeds PNG/JPG.</td><td>Choose file first, then draw the box.</td></tr>
+        <tr><td><b>Find</b></td><td>Click a text run on the page to capture it into a text layer box.</td><td>Use the <b>Find text…</b> field and <b>Find Next</b> to highlight matches.</td></tr>
+        <tr><td><b>Box (filled)</b></td><td>Draw filled/outlined rectangles.</td><td>Controls: <b>Stroke</b> width, <b>Dashed</b>, <b>Text</b> (stroke color), <b>Cover</b> (fill color).</td></tr>
+        <tr><td><b>Line</b></td><td>Straight line for markups.</td><td>Stroke width &amp; dashes supported.</td></tr>
+        <tr><td><b>Arrow</b></td><td>Line with arrowhead.</td><td>Good for callouts.</td></tr>
+        <tr><td><b>Dimension</b></td><td>Measures a span and labels it with real-world length.</td><td>Uses <a href="#scale">Scale</a> (auto or calibrated). Draw from point A to B.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div id="drawing" class="section">
+    <h2>Drawing &amp; measurement</h2>
+    <ul>
+      <li><b>Box:</b> choose fill (Cover color) and outline (Text color), set <b>Stroke</b> width, toggle <b>Dashed</b>.</li>
+      <li><b>Line/Arrow:</b> drag from start to end; adjust stroke and dashes. Arrow adds a head automatically.</li>
+      <li><b>Dimension:</b> drag across the feature; a label appears (e.g., <em>1250 mm</em>) based on current scale.</li>
+    </ul>
+    <div class="callout">
+      Tip: Enable <b>Snap</b> and adjust <b>Grid</b> size to lock annotations to a clean rhythm. Smart guides will also
+      snap to page edges, centers, and neighboring items.
+    </div>
+  </div>
+
+  <div id="scale" class="section">
+    <h2>Scale detection &amp; calibration</h2>
+    <p>For construction drawings, accurate dimensions matter. You have two options:</p>
+    <ol>
+      <li><b>Auto Scale</b> — scans the page text for patterns like <code>Scale 1:100</code> or <code>1/50</code>.</li>
+      <li><b>Calibrate</b> — click two known points (e.g., gridline centers), then enter the real distance in your chosen units (mm/cm/m/in/ft).</li>
+    </ol>
+    <p>The current units are selectable in the toolbar (Units). Dimension labels convert automatically.</p>
+  </div>
+
+  <div id="snap-grid" class="section">
+    <h2>Snap, grid &amp; guides</h2>
+    <ul>
+      <li><b>Snap</b> toggles grid-based snapping for positions &amp; sizes.</li>
+      <li><b>Grid</b> sets the spacing; <b>Show grid</b> overlays the pattern.</li>
+      <li>Smart guides appear when edges/centers align with page or other items.</li>
+    </ul>
+  </div>
+
+  <div id="pages" class="section">
+    <h2>Page operations</h2>
+    <p>Use the toolbar to:</p>
+    <ul>
+      <li><b>+ Blank Before / After</b> — insert a blank page.</li>
+      <li><b>Duplicate Page</b> — copy the current page (including content).</li>
+      <li><b>Delete Page</b> — remove current (keeps at least one page).</li>
+      <li><b>Move ▲ / ▼</b> — reorder pages.</li>
+    </ul>
+  </div>
+
+  <div id="apply-save" class="section">
+    <h2>Apply, Save, Download</h2>
+    <ul>
+      <li><b>Apply to PDF</b> — burns the staged layer (text/redact/image/box/line/arrow/dimension) into the PDF.</li>
+      <li><b>Download</b> — saves the edited PDF to your computer.</li>
+      <li><b>Save (Upload)</b> — posts the edited PDF to your server (see <code>api/save.php</code>).</li>
+      <li><b>Version name</b> &amp; <b>Keep last N</b> help you tag and prune uploads.</li>
+    </ul>
+  </div>
+
+  <div id="exports" class="section">
+    <h2>Exports (Text CSV/JSON, SVG/DXF)</h2>
+    <p>Open the <a href="export.html">Exports</a> page for offline conversions:</p>
+    <ul>
+      <li><b>Extract Text → CSV</b> — rows with page, text, and bounding boxes.</li>
+      <li><b>Extract Text → JSON</b> — structured text runs per page.</li>
+      <li><b>Overlay → SVG / DXF</b> — load an overlay JSON and convert to vector formats for CAD/markup workflows.</li>
+    </ul>
+    <p class="lead">Note: If you need an “Export overlay JSON” button in the editor, say the word and I’ll add it to the toolbar.</p>
+  </div>
+
+  <div id="shortcuts" class="section">
+    <h2>Keyboard shortcuts</h2>
+    <table>
+      <tbody>
+        <tr><td><span class="kbd">Space</span> + drag</td><td>Pan</td></tr>
+        <tr><td>Mouse wheel + <span class="kbd">Ctrl</span></td><td>Zoom</td></tr>
+        <tr><td><span class="kbd">G</span></td><td>Toggle grid</td></tr>
+        <tr><td><span class="kbd">S</span></td><td>Toggle snap</td></tr>
+        <tr><td>Arrows</td><td>Nudge selection (hold <span class="kbd">Shift</span> = 10px)</td></tr>
+        <tr><td><span class="kbd">Alt</span> + Arrows</td><td>Resize selection</td></tr>
+        <tr><td><span class="kbd">Alt</span> + <span class="kbd">R</span> (hold <span class="kbd">Shift</span> to snap 15°)</td><td>Rotate selection</td></tr>
+        <tr><td><span class="kbd">Ctrl/Cmd</span> + <span class="kbd">C</span> / <span class="kbd">V</span></td><td>Copy / Paste items</td></tr>
+        <tr><td><span class="kbd">Ctrl/Cmd</span> + <span class="kbd">D</span></td><td>Duplicate</td></tr>
+        <tr><td><span class="kbd">Delete</span></td><td>Delete selection</td></tr>
+        <tr><td><span class="kbd">⟲ / ⟳</span></td><td>Undo / Redo buttons on the toolbar</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div id="troubleshoot" class="section">
+    <h2>Troubleshooting</h2>
+    <ul>
+      <li><b>Blank page or error</b> — ensure <code>/vendor/pdf.min.js</code> and <code>/vendor/pdf.worker.min.js</code> are present (using the <code>legacy/</code> build of pdfjs-dist).</li>
+      <li><b>Addon tools missing</b> — confirm <code>&lt;script src="/app/addons-draw.js"&gt;</code> is the last script before <code>&lt;/body&gt;</code>.</li>
+      <li><b>Styling didn’t change</b> — cache-bust the CSS link: <code>/assets/ui.css?v=2</code> and hard refresh.</li>
+      <li><b>Dimension label looks wrong</b> — run <b>Calibrate</b> on a known span or use <b>Auto Scale</b> if the title block has a scale line.</li>
+      <li><b>Fonts</b> — upload a <b>Custom TTF</b> to match the original typeface for best fidelity.</li>
+    </ul>
+  </div>
+
+  <p class="muted">Last updated: today.</p>
+</div>
+</body>
+</html>

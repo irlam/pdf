@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>PDF Exports</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/assets/ui.css">
+  <style>
+    body{ background:var(--bg); color:var(--text); font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif; margin:0; }
+    .wrap{ max-width:900px; margin:24px auto; padding:0 16px; }
+    .card{ background:#0f172a; border:1px solid var(--border); border-radius:12px; padding:16px; margin:12px 0; }
+  </style>
+</head>
+<body>
+<header class="topnav">
+  <div class="brand">PDF Exports</div>
+  <nav><a href="index.html">← Editor</a></nav>
+</header>
+
+<div class="wrap">
+  <div class="card">
+    <h2>1) Load a PDF</h2>
+    <input id="pdfFile" type="file" accept="application/pdf">
+    <p class="muted">This page runs locally in your browser. No uploads.</p>
+  </div>
+
+  <div class="card">
+    <h2>2) Extract Text</h2>
+    <button id="txtCsv">Export text as CSV</button>
+    <button id="txtJson">Export text as JSON</button>
+  </div>
+
+  <div class="card">
+    <h2>3) Overlay → SVG / DXF</h2>
+    <p>Load a previously exported overlay JSON (from the editor’s “Export staged layer”):</p>
+    <input id="overlayJson" type="file" accept="application/json">
+    <div style="margin-top:8px">
+      <button id="ovSvg">Export SVG</button>
+      <button id="ovDxf">Export DXF (R12)</button>
+    </div>
+  </div>
+</div>
+
+<!-- PDF.js (self-hosted) -->
+<script src="/vendor/pdf.min.js"></script>
+<script> pdfjsLib.GlobalWorkerOptions.workerSrc = "/vendor/pdf.worker.min.js"; </script>
+
+<script src="/app/exporters.js"></script>
+</body>
+</html>

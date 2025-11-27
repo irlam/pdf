@@ -1,0 +1,1046 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>PDF Editor — compact UI + page rotate</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Modern, compact UI -->
+  <link rel="stylesheet"
+        href="/assets/ui.css?v=<?=filemtime($_SERVER['DOCUMENT_ROOT'].'/assets/ui.css')?>">
+
+  <!-- Minimal page layout (keeps canvases sized correctly) -->
+  <style>
+    :root{
+      --bg:#0b1220; --card:#111827; --text:#e5e7eb; --border:#1f2937;
+    }
+    html,body{ margin:0; background:var(--bg); color:var(--text);
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,'Helvetica Neue',Arial,sans-serif;}
+    .wrap{ max-width:1200px; margin:18px auto; padding:0 14px;}
+    #viewerShell{ border:1px solid var(--border); border-radius:12px; background:#0e0e0e; padding:8px; }
+    #scroller{ position:relative; overflow:auto; height:76vh; background:#111; border-radius:8px; }
+    #pageLayer{ position:relative; width:max-content; height:max-content; }
+    #pdfCanvas{ display:block; background:#fff; border-radius:8px; }
+    #overlayCanvas{ position:absolute; left:0; top:0; pointer-events:none; }
+    .muted{ color:#94a3b8; font-size:13px; margin-top:8px; }
+    .kbd{ padding:0 6px; border:1px solid var(--border); border-radius:6px; background:#0f172a; color:#cbd5e1; }
+  </style>
+</head>
+<body>
+
+<header class="topnav">
+  <div class="brand">PDF Editor</div>
+  <nav>
+    <a href="/tools/crop.html">Crop</a>
+    <a href="/tools/dxf.html">DWG→DXF</a>
+    <a href="/export.html">Exports</a>
+    <a href="/tools/convert.html">Convert</a>
+	<a href="/help.html">Help</a>  
+  </nav>
+</header>
+
+<div class="wrap">
+  <!-- Toolbar 1: tools & text -->
+  <div class="bar">
+    <input id="file" type="file" accept="application/pdf" />
+
+    <label>Tool:
+      <select id="tool">
+        <option value="select">Select / Move / Resize / Rotate</option>
+        <option value="editText">Edit Text (cover + retype)</option>
+        <option value="redact">Redact (drag box)</option>
+        <option value="image">Place/Replace Image (drag box)</option>
+        <option value="find">Find (click text run)</option>
+      </select>
+    </label>
+
+    <label>Font:
+      <select id="fontFamily">
+        <option value="Helvetica">Helvetica (sans)</option>
+        <option value="TimesRoman">Times (serif)</option>
+        <option value="Courier">Courier (mono)</option>
+        <option value="Custom">Custom TTF (upload)</option>
+      </select>
+    </label>
+    <label>Size <input id="fontSize" type="number" min="6" max="120" step="1" value="12" style="width:72px" /></label>
+    <label>Align
+      <select id="textAlign">
+        <option value="left">Left</option>
+        <option value="center">Center</option>
+        <option value="right">Right</option>
+      </select>
+    </label>
+    <label><input id="bold" type="checkbox"> Bold*</label>
+    <label><input id="italic" type="checkbox"> Italic*</label>
+    <input id="customFont" type="file" accept=".ttf,.otf,.ttc,.otc" style="max-width:230px" />
+
+    <input id="textValue" type="text" placeholder="New text…" style="min-width:220px" />
+    <label>Text <input id="textColor" type="color" value="#000000" /></label>
+    <label>Cover <input id="paintColor" type="color" value="#ffffff" /></label>
+    <label>Redact <input id="redactColor" type="color" value="#000000" /></label>
+
+    <!-- image picker (shown only when Image tool is active) -->
+    <input id="imgFile" type="file" accept="image/*" />
+  </div>
+
+  <!-- Toolbar 2: zoom, rotate (items 90°), rotate page 90°, grid/snap, find -->
+  <div class="bar2">
+    <div class="btn-group">
+      <button id="zoomOut">−</button>
+      <span id="zoomPct" class="chip">100%</span>
+      <button id="zoomIn">+</button>
+    </div>
+    <button id="zoomReset">Reset</button>
+
+    <!-- Item rotation (selected overlays) — 90° steps -->
+    <div class="btn-group">
+      <button id="rotL" class="btn-amber" title="Rotate item -90°">⟲ Item</button>
+      <span class="chip mini">Rotate</span>
+      <button id="rotR" class="btn-amber" title="Rotate item +90°">⟳ Item</button>
+    </div>
+
+    <!-- Page rotation (visual + persisted on Apply) — 90° steps -->
+    <div class="btn-group">
+      <button id="pageRotL" class="btn-amber" title="Rotate page -90°">⟲ Page</button>
+      <span class="chip mini">Page</span>
+      <button id="pageRotR" class="btn-amber" title="Rotate page +90°">⟳ Page</button>
+    </div>
+
+    <label><input type="checkbox" id="snap"> Snap</label>
+    <label>Grid <input id="gridSize" type="number" min="2" max="64" step="1" value="8" style="width:72px" /></label>
+    <label><input type="checkbox" id="showGrid"> Show grid</label>
+
+    <span class="sp"></span>
+    <input id="findInput" type="text" placeholder="Find text…" />
+    <button id="findNext">Find Next</button>
+    <span id="findCount" class="muted"></span>
+  </div>
+
+  <!-- Toolbar 3: selection ops, page ops, save -->
+  <div class="bar3">
+    <button id="undo">⟲ Undo</button>
+    <button id="redo">⟳ Redo</button>
+    <button id="duplicate">⧉ Duplicate</button>
+    <button id="delete" class="danger">🗑 Delete</button>
+
+    <span class="sp"></span>
+    <button id="pageInsertBefore">+ Blank Before</button>
+    <button id="pageInsertAfter">+ Blank After</button>
+    <button id="pageDuplicate">Duplicate Page</button>
+    <button id="pageDelete" class="danger">Delete Page</button>
+    <button id="pageUp">Move ▲</button>
+    <button id="pageDown">Move ▼</button>
+    <span id="pageInfo">—</span>
+
+    <span class="sp"></span>
+    <input id="versionName" type="text" placeholder="Version name (e.g., revA)" />
+    <input id="keepN" type="number" min="1" max="20" value="5" title="Keep last N versions" style="width:72px" />
+    <button id="apply">Apply to PDF</button>
+    <button id="download">Download</button>
+    <button id="save">Save (Upload)</button>
+  </div>
+
+  <!-- Viewer -->
+  <div id="viewerShell">
+    <div id="scroller">
+      <div id="pageLayer">
+        <canvas id="pdfCanvas"></canvas>
+        <canvas id="overlayCanvas"></canvas>
+      </div>
+    </div>
+    <div class="muted">
+      Tips: Hold <span class="kbd">Space</span> to pan. Wheel = zoom. <span class="kbd">Arrows</span> nudge; <span class="kbd">Shift</span>=10px; <span class="kbd">Alt+Arrows</span>=resize.
+      Rotate <b>items</b> via buttons or <span class="kbd">Alt+R</span> (+90° / <span class="kbd">Alt+Shift+R</span> −90°).  
+      Rotate the <b>page</b> via “Page” buttons or <span class="kbd">Alt+P</span> (+90° / <span class="kbd">Alt+Shift+P</span> −90°).  
+      *Bold/Italic are faux unless you upload matching TTFs as Custom.
+    </div>
+  </div>
+</div>
+
+<!-- PDF.js (self-hosted UMD) -->
+<script src="/vendor/pdf.min.js"></script>
+<script> pdfjsLib.GlobalWorkerOptions.workerSrc = "/vendor/pdf.worker.min.js"; </script>
+
+<!-- pdf-lib -->
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+
+<!-- App scripts -->
+<script>
+/* ====== Helpers / constants ====== */
+const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
+const deepClone = (o)=>JSON.parse(JSON.stringify(o));
+const dpr = ()=>Math.max(1, window.devicePixelRatio||1);
+const rad = (deg)=>deg*Math.PI/180;
+const GUIDE_EPS = 5;   // px tolerance for smart guides
+
+/* ====== DOM refs ====== */
+function q(sel){ return document.querySelector(sel); }
+const el = {
+  file: q('#file'), tool: q('#tool'),
+  fontFamily: q('#fontFamily'), fontSize: q('#fontSize'), textAlign: q('#textAlign'),
+  bold: q('#bold'), italic: q('#italic'), customFont: q('#customFont'),
+  textValue: q('#textValue'), textColor: q('#textColor'), paintColor: q('#paintColor'), redactColor: q('#redactColor'),
+  findInput: q('#findInput'), findNext: q('#findNext'), findCount: q('#findCount'),
+  imgFile: q('#imgFile'),
+
+  pdfCanvas: q('#pdfCanvas'), overlay: q('#overlayCanvas'), pageInfo: q('#pageInfo'),
+  undo: q('#undo'), redo: q('#redo'), duplicate:q('#duplicate'), del:q('#delete'),
+  apply: q('#apply'), save: q('#save'), download: q('#download'),
+  zoomIn:q('#zoomIn'), zoomOut:q('#zoomOut'), zoomReset:q('#zoomReset'), zoomPct:q('#zoomPct'),
+  scroller:q('#scroller'), pageLayer:q('#pageLayer'),
+  pageInsertBefore:q('#pageInsertBefore'), pageInsertAfter:q('#pageInsertAfter'), pageDuplicate:q('#pageDuplicate'),
+  pageDelete:q('#pageDelete'), pageUp:q('#pageUp'), pageDown:q('#pageDown'),
+  snap:q('#snap'), gridSize:q('#gridSize'), showGrid:q('#showGrid'),
+  versionName:q('#versionName'), keepN:q('#keepN'),
+  rotL:q('#rotL'), rotR:q('#rotR'),
+  pageRotL:q('#pageRotL'), pageRotR:q('#pageRotR')
+};
+const pdfCtx = el.pdfCanvas.getContext('2d');
+const overlayCtx = el.overlay.getContext('2d');
+
+/* ====== App state ====== */
+let pdfBytes = null;
+let pdfDocWriter = null;      // pdf-lib
+let pdfDocRender = null;      // PDF.js
+let viewport = null;          // PDF.js viewport
+let currentPageIndex = 0;
+let pageCount = 0;
+let zoom = 1;
+
+// NEW: per-page visual rotation offsets (0/90/180/270)
+let pageRotDelta = [];
+
+let edits = [];               // staged items: {id,type,page,rectCss:{x,y,w,h},rot, ...}
+let nextId = 1;
+let selectedIds = [];
+
+let dragMode = null;          // 'move'|'resize'|'rotate'|null
+let dragStart = null;         // {x,y} CSS
+let startRects = null;        // [{id,rect,rot}]
+let resizeHandle = null;
+let groupBoxAtStart = null;
+
+let toolDragging = false;     // creating new item
+let toolDragStart = null;
+
+let undoStack = [];
+let redoStack = [];
+
+let settings = { snap:false, grid:8, showGrid:false };
+
+let customFontBytes = null;   // uploaded TTF/OTF bytes (Uint8Array)
+let customFontEmbedded = null;
+
+let findRuns = [];            // [{bboxCss:[x,y,w,h], text}]
+let findIndex = -1;
+
+/* ====== Loading & rendering ====== */
+async function loadBoth(arrayBuffer){
+  pdfBytes = arrayBuffer;
+  pdfDocWriter = await PDFLib.PDFDocument.load(pdfBytes);
+  pdfDocRender = await pdfjsLib.getDocument({ data: pdfBytes }).promise;
+  pageCount = pdfDocRender.numPages;
+  currentPageIndex = clamp(currentPageIndex, 0, pageCount-1);
+
+  // init page rotation deltas
+  pageRotDelta = new Array(pageCount).fill(0);
+
+  await renderPage(currentPageIndex, true);
+}
+
+async function renderPage(index, resetZoom=false){
+  const page = await pdfDocRender.getPage(index+1);
+  const containerW = Math.min(1100, el.scroller.clientWidth - 24 || 1100);
+  const baseViewport = page.getViewport({ scale:1 });
+  if (resetZoom) zoom = 1;
+
+  const baseRot = page.rotate || 0; // include intrinsic rotation
+  const extraRot = ((pageRotDelta[index] || 0) % 360 + 360) % 360;
+
+  viewport = page.getViewport({
+    scale: (containerW / baseViewport.width) * zoom * dpr(),
+    rotation: (baseRot + extraRot) % 360
+  });
+
+  // size canvases
+  el.pdfCanvas.width = Math.floor(viewport.width);
+  el.pdfCanvas.height = Math.floor(viewport.height);
+  el.pdfCanvas.style.width = Math.floor(viewport.width / dpr()) + 'px';
+  el.pdfCanvas.style.height = Math.floor(viewport.height / dpr()) + 'px';
+
+  el.overlay.width = el.pdfCanvas.width;
+  el.overlay.height = el.pdfCanvas.height;
+  el.overlay.style.width = el.pdfCanvas.style.width;
+  el.overlay.style.height = el.pdfCanvas.style.height;
+
+  el.pageLayer.style.width = el.pdfCanvas.style.width;
+  el.pageLayer.style.height = el.pdfCanvas.style.height;
+
+  // render base page
+  overlayCtx.clearRect(0,0,el.overlay.width, el.overlay.height);
+  await page.render({ canvasContext: pdfCtx, viewport }).promise;
+
+  // extract text runs for find/assist
+  await extractTextRuns(page);
+
+  // draw overlay (items / grid)
+  drawOverlay();
+
+  // UI bits
+  el.pageInfo.textContent = `Page ${index+1} / ${pageCount}`;
+  el.zoomPct.textContent = Math.round(zoom*100) + '%';
+}
+</script>
+
+<script>
+/* ====== Text runs (find/replace assist) ====== */
+async function extractTextRuns(page){
+  findRuns = [];
+  const tc = await page.getTextContent();
+  for (const item of tc.items){
+    const t = item.transform; // [a,b,c,d,e,f]; e=x, f=y
+    const w = item.width, h = item.height;
+    const x = t[4], y = t[5];
+    const x2 = x + w, y2 = y - h;
+
+    const p1 = pdfToCssPoint(x, y);
+    const p2 = pdfToCssPoint(x2, y2);
+    const r = normalizeCssRect({x:p1.x, y:p1.y}, {x:p2.x, y:p2.y});
+
+    if (r.w>0 && r.h>0) findRuns.push({ bboxCss:[r.x,r.y,r.w,r.h], text:item.str });
+  }
+}
+
+/* ====== Coordinate helpers ====== */
+function pdfToCssPoint(pdfX, pdfY){
+  const [devX, devY] = viewport.convertToViewportPoint(pdfX, pdfY);
+  return { x: devX/dpr(), y: devY/dpr() };
+}
+function cssToPdf(ptCss){
+  const dev = { x: ptCss.x*dpr(), y: ptCss.y*dpr() };
+  const [pdfX, pdfY] = viewport.convertToPdfPoint(dev.x, dev.y);
+  return { x: pdfX, y: pdfY };
+}
+function cssRectToPdf(r){
+  const tl = cssToPdf({x:r.x, y:r.y});
+  const br = cssToPdf({x:r.x+r.w, y:r.y+r.h});
+  return { x:tl.x, y:br.y, w:br.x-tl.x, h:tl.y-br.y };
+}
+function normalizeCssRect(a,b){
+  const x1 = Math.min(a.x,b.x), y1 = Math.min(a.y,b.y);
+  const x2 = Math.max(a.x,b.x), y2 = Math.max(a.y,b.y);
+  return {x:x1, y:y1, w:x2-x1, h:y2-y1};
+}
+function toDev(r){ return { x:Math.round(r.x*dpr()), y:Math.round(r.y*dpr()), w:Math.round(r.w*dpr()), h:Math.round(r.h*dpr()) }; }
+
+/* ====== Grid & guides ====== */
+function drawGrid(){
+  if (!settings.showGrid) return;
+  const step = settings.grid*dpr();
+  overlayCtx.save();
+  overlayCtx.beginPath();
+  overlayCtx.lineWidth = 1;
+  overlayCtx.strokeStyle = "rgba(148,163,184,0.25)";
+  for (let x=0; x<=el.overlay.width; x+=step){ overlayCtx.moveTo(x+0.5,0); overlayCtx.lineTo(x+0.5, el.overlay.height); }
+  for (let y=0; y<=el.overlay.height; y+=step){ overlayCtx.moveTo(0,y+0.5); overlayCtx.lineTo(el.overlay.width,y+0.5); }
+  overlayCtx.stroke(); overlayCtx.restore();
+}
+function snapVal(v){ return Math.round(v/settings.grid)*settings.grid; }
+function snapRect(r){
+  if (!settings.snap) return r;
+  return { x:snapVal(r.x), y:snapVal(r.y), w:Math.max(settings.grid,snapVal(r.w)), h:Math.max(settings.grid,snapVal(r.h)) };
+}
+function computeGuides(movingIds){
+  const lines = [];
+  const pageW = parseFloat(el.pdfCanvas.style.width), pageH = parseFloat(el.pdfCanvas.style.height);
+  lines.push({type:'v', pos:0},{type:'v', pos:pageW/2},{type:'v', pos:pageW});
+  lines.push({type:'h', pos:0},{type:'h', pos:pageH/2},{type:'h', pos:pageH});
+  for (const it of edits){
+    if (it.page!==currentPageIndex) continue;
+    if (movingIds.includes(it.id)) continue;
+    const r = it.rectCss;
+    lines.push({type:'v', pos:r.x},{type:'v', pos:r.x+r.w},{type:'v', pos:r.x+r.w/2});
+    lines.push({type:'h', pos:r.y},{type:'h', pos:r.y+r.h},{type:'h', pos:r.y+r.h/2});
+  }
+  return lines;
+}
+function snapToGuides(rect, guides){
+  const v = [{name:'left', val:rect.x},{name:'center', val:rect.x+rect.w/2},{name:'right', val:rect.x+rect.w}];
+  const h = [{name:'top', val:rect.y},{name:'middle', val:rect.y+rect.h/2},{name:'bottom', val:rect.y+rect.h}];
+  let dx=0, dy=0, hitV=null, hitH=null;
+  for (const g of guides){
+    if (g.type==='v'){
+      for (const e of v){ if (Math.abs(e.val+dx - g.pos) <= GUIDE_EPS){ dx += (g.pos - (e.val+dx)); hitV = g.pos; } }
+    } else {
+      for (const e of h){ if (Math.abs(e.val+dy - g.pos) <= GUIDE_EPS){ dy += (g.pos - (e.val+dy)); hitH = g.pos; } }
+    }
+  }
+  return { rect: { x:rect.x+dx, y:rect.y+dy, w:rect.w, h:rect.h }, hitV, hitH };
+}
+function drawGuideLines(hitV, hitH){
+  overlayCtx.save();
+  overlayCtx.lineWidth = 1*dpr();
+  overlayCtx.setLineDash([6*dpr(),4*dpr()]);
+  overlayCtx.strokeStyle = "rgba(251,191,36,0.9)";
+  overlayCtx.beginPath();
+  if (hitV!=null){ const x=Math.round(hitV*dpr()); overlayCtx.moveTo(x,0); overlayCtx.lineTo(x, el.overlay.height); }
+  if (hitH!=null){ const y=Math.round(hitH*dpr()); overlayCtx.moveTo(0,y); overlayCtx.lineTo(el.overlay.width, y); }
+  overlayCtx.stroke(); overlayCtx.restore();
+}
+
+/* ====== Overlay drawing & selection ====== */
+const HANDLE = 8; // px CSS
+
+function drawOverlay(){
+  overlayCtx.clearRect(0,0,el.overlay.width, el.overlay.height);
+  drawGrid();
+  for (const it of edits){
+    if (it.page!==currentPageIndex) continue;
+    drawItem(it, selectedIds.includes(it.id));
+  }
+  if (selectedIds.length>1){
+    const gb = groupBox();
+    if (gb){
+      const gbd = toDev(gb);
+      overlayCtx.lineWidth = 2*dpr();
+      overlayCtx.strokeStyle = "rgba(59,130,246,0.95)";
+      overlayCtx.strokeRect(gbd.x,gbd.y,gbd.w,gbd.h);
+      drawHandles(gbd);
+      drawRotateHandle(gbd);
+    }
+  }
+}
+function drawItem(it, selected){
+  const r = it.rectCss, rd = toDev(r);
+  overlayCtx.save();
+  // rotation visualize (around center)
+  const cx = rd.x + rd.w/2, cy = rd.y + rd.h/2;
+  const rot = (it.rot||0);
+  overlayCtx.translate(cx, cy);
+  overlayCtx.rotate(rad(rot));
+  overlayCtx.translate(-cx, -cy);
+
+  if (it.type==='redact'){
+    overlayCtx.fillStyle = it.color||'#000';
+    overlayCtx.fillRect(rd.x, rd.y, rd.w, rd.h);
+  } else if (it.type==='text'){
+    overlayCtx.fillStyle = it.cover || '#fff';
+    overlayCtx.fillRect(rd.x, rd.y, rd.w, rd.h);
+    overlayCtx.fillStyle = it.color || '#000';
+    const px = Math.max(10, (it.fontSize||12))*dpr();
+    overlayCtx.font = (it.bold?'700 ':'') + px + 'px ' + (it.fontFamily||'Helvetica') + ', sans-serif';
+    overlayCtx.textBaseline = 'top';
+    const pad = 2*dpr();
+    let x = rd.x + pad;
+    if (it.align==='center') x = rd.x + (rd.w/2);
+    if (it.align==='right')  x = rd.x + rd.w - pad;
+    overlayCtx.save();
+    if (it.align==='center') overlayCtx.textAlign='center';
+    if (it.align==='right')  overlayCtx.textAlign='right';
+    overlayCtx.fillText(it.text||'', x, rd.y + pad, rd.w - pad*2);
+    overlayCtx.restore();
+  } else if (it.type==='image' && it.imageUrl){
+    const img = getImg(it.imageUrl);
+    if (img && img.complete) overlayCtx.drawImage(img, rd.x, rd.y, rd.w, rd.h);
+    else {
+      overlayCtx.fillStyle = "rgba(0,0,0,0.06)";
+      overlayCtx.fillRect(rd.x, rd.y, rd.w, rd.h);
+      overlayCtx.strokeStyle = "rgba(0,0,0,0.3)";
+      overlayCtx.strokeRect(rd.x, rd.y, rd.w, rd.h);
+    }
+  }
+  overlayCtx.restore();
+
+  if (selected){
+    overlayCtx.lineWidth = 2*dpr();
+    overlayCtx.strokeStyle = "rgba(59,130,246,0.95)";
+    overlayCtx.strokeRect(rd.x, rd.y, rd.w, rd.h);
+    drawHandles(rd);
+    drawRotateHandle(rd);
+  }
+}
+function drawHandles(rd){
+  const hs = HANDLE*dpr();
+  const pts = handlePoints(rd);
+  overlayCtx.fillStyle = "#fff";
+  overlayCtx.strokeStyle = "rgba(59,130,246,1)";
+  for (const p of pts){
+    overlayCtx.fillRect(p.x - hs/2, p.y - hs/2, hs, hs);
+    overlayCtx.strokeRect(p.x - hs/2, p.y - hs/2, hs, hs);
+  }
+}
+function drawRotateHandle(rd){
+  const r = 14*dpr();
+  const top = { x: rd.x + rd.w/2, y: rd.y - 20*dpr() };
+  overlayCtx.beginPath();
+  overlayCtx.arc(top.x, top.y, r, 0, Math.PI*2);
+  overlayCtx.fillStyle = "#fff";
+  overlayCtx.fill();
+  overlayCtx.lineWidth = 2*dpr();
+  overlayCtx.strokeStyle = "rgba(59,130,246,1)";
+  overlayCtx.stroke();
+}
+function handlePoints(rd){
+  const x1=rd.x, y1=rd.y, x2=rd.x+rd.w, y2=rd.y+rd.h, xm=(x1+x2)/2, ym=(y1+y2)/2;
+  return [
+    {name:'nw', x:x1, y:y1},{name:'n', x:xm, y:y1},{name:'ne', x:x2, y:y1},
+    {name:'e', x:x2, y:ym},{name:'se', x:x2, y:y2},{name:'s', x:xm, y:y2},
+    {name:'sw', x:x1, y:y2},{name:'w', x:x1, y:ym}
+  ];
+}
+function hitHandle(cssX, cssY, rd){
+  const hs = HANDLE*dpr();
+  const pts = handlePoints(rd);
+  const dx = cssX*dpr(), dy = cssY*dpr();
+  for (const p of pts){
+    if (dx>=p.x-hs && dx<=p.x+hs && dy>=p.y-hs && dy<=p.y+hs) return p.name;
+  }
+  // rotate handle
+  const rx = rd.x+rd.w/2, ry = rd.y - 20*dpr();
+  const dist = Math.hypot(dx-rx, dy-ry);
+  if (dist <= 14*dpr()+2) return 'rotate';
+  return null;
+}
+function hitItemAt(cssX, cssY){
+  for (let i=edits.length-1;i>=0;i--){
+    const it = edits[i]; if (it.page!==currentPageIndex) continue;
+    const r = it.rectCss;
+    if (cssX>=r.x && cssX<=r.x+r.w && cssY>=r.y && cssY<=r.y+r.h) return it.id;
+  }
+  return null;
+}
+function groupBox(){
+  if (!selectedIds.length) return null;
+  let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
+  for (const id of selectedIds){
+    const it = edits.find(e=>e.id===id); if (!it || it.page!==currentPageIndex) continue;
+    minX = Math.min(minX, it.rectCss.x); minY = Math.min(minY, it.rectCss.y);
+    maxX = Math.max(maxX, it.rectCss.x+it.rectCss.w); maxY = Math.max(maxY, it.rectCss.y+it.rectCss.h);
+  }
+  if (minX===Infinity) return null;
+  return { x:minX, y:minY, w:maxX-minX, h:maxY-minY };
+}
+
+/* ====== Image cache ====== */
+const _img = new Map();
+function getImg(url){ if (_img.has(url)) return _img.get(url); const im=new Image(); im.src=url; _img.set(url,im); return im; }
+
+/* ====== Undo/Redo ====== */
+function pushHistory(){ undoStack.push(deepClone(edits)); if (undoStack.length>200) undoStack.shift(); redoStack=[]; }
+function undo(){ if (!undoStack.length) return; redoStack.push(deepClone(edits)); edits=undoStack.pop(); selectedIds=[]; drawOverlay(); }
+function redo(){ if (!redoStack.length) return; undoStack.push(deepClone(edits)); edits=redoStack.pop(); selectedIds=[]; drawOverlay(); }
+
+/* ====== Mouse & keyboard ====== */
+let panning = false, panStart = null, scrollStart = null;
+let spaceDown=false;
+
+el.scroller.addEventListener('mousedown', (ev)=>{
+  const rect = el.pdfCanvas.getBoundingClientRect();
+  const overCanvas = ev.clientX>=rect.left && ev.clientX<=rect.right && ev.clientY>=rect.top && ev.clientY<=rect.bottom;
+  if (!overCanvas) return;
+
+  // Space = pan
+  if (ev.button===0 && spaceDown){
+    panning = true; panStart = {x:ev.clientX,y:ev.clientY}; scrollStart = {x:el.scroller.scrollLeft, y:el.scroller.scrollTop};
+    return;
+  }
+
+  const cssX = ev.clientX-rect.left, cssY = ev.clientY-rect.top;
+
+  if (el.tool.value==='select'){
+    const id = hitItemAt(cssX, cssY);
+    if (id!=null){
+      const it = edits.find(e=>e.id===id);
+      // selection logic
+      if (!ev.shiftKey && !selectedIds.includes(id)) selectedIds=[id];
+      if (ev.shiftKey && selectedIds.includes(id)){ selectedIds = selectedIds.filter(x=>x!==id); drawOverlay(); return; }
+      if (ev.shiftKey && !selectedIds.includes(id)) selectedIds.push(id);
+
+      const handle = hitHandle(cssX, cssY, toDev(it.rectCss));
+      if (handle==='rotate'){ dragMode='rotate'; }
+      else if (handle){ dragMode='resize'; resizeHandle=handle; }
+      else { dragMode='move'; }
+      dragStart = {x:cssX, y:cssY};
+      startRects = selectedIds.map(id=>({id, rect: {...edits.find(e=>e.id===id).rectCss}, rot: edits.find(e=>e.id===id).rot||0 }));
+      groupBoxAtStart = groupBox();
+      return;
+    } else {
+      // marquee selection
+      toolDragging = true; toolDragStart = {x:cssX, y:cssY};
+      drawRubber(cssX, cssY);
+      return;
+    }
+  }
+
+  // creation with tools
+  if (['editText','redact','image','find'].includes(el.tool.value)){
+    toolDragging = true;
+    toolDragStart = { x: cssX, y: cssY };
+    drawRubber(cssX, cssY);
+  }
+});
+
+window.addEventListener('mousemove', (ev)=>{
+  if (panning){
+    const dx = ev.clientX - panStart.x, dy = ev.clientY - panStart.y;
+    el.scroller.scrollLeft = scrollStart.x - dx;
+    el.scroller.scrollTop  = scrollStart.y - dy;
+    return;
+  }
+  if (dragMode){
+    const rect = el.pdfCanvas.getBoundingClientRect();
+    const cssX = clamp(ev.clientX-rect.left,0,rect.width);
+    const cssY = clamp(ev.clientY-rect.top,0,rect.height);
+    const dx = cssX - dragStart.x, dy = cssY - dragStart.y;
+
+    const guides = computeGuides(selectedIds);
+
+    if (dragMode==='move'){
+      let delta = {x:dx, y:dy};
+      const gb0 = groupBoxAtStart;
+      if (gb0){
+        const movedGb = { x:gb0.x+delta.x, y:gb0.y+delta.y, w:gb0.w, h:gb0.h };
+        const {rect:sn, hitV, hitH} = snapToGuides(movedGb, guides);
+        delta.x += (sn.x - movedGb.x); delta.y += (sn.y - movedGb.y);
+        drawOverlay(); drawGuideLines(hitV, hitH);
+      }
+      for (const s of startRects){
+        const it = edits.find(e=>e.id===s.id);
+        let r = {...s.rect};
+        r.x = r.x + delta.x; r.y = r.y + delta.y;
+        if (settings.snap) r = snapRect(r);
+        it.rectCss = r;
+      }
+      drawOverlay();
+    } else if (dragMode==='resize'){
+      const applyResize = (r, handle, dx, dy)=>{
+        const out = {...r}, minSize=8;
+        switch(handle){
+          case 'nw': out.x+=dx; out.y+=dy; out.w-=dx; out.h-=dy; break;
+          case 'n':  out.y+=dy; out.h-=dy; break;
+          case 'ne': out.y+=dy; out.w+=dx; out.h-=dy; break;
+          case 'e':  out.w+=dx; break;
+          case 'se': out.w+=dx; out.h+=dy; break;
+          case 's':  out.h+=dy; break;
+          case 'sw': out.x+=dx; out.w-=dx; out.h+=dy; break;
+          case 'w':  out.x+=dx; out.w-=dx; break;
+        }
+        out.w=Math.max(minSize,out.w); out.h=Math.max(minSize,out.h);
+        out.x=clamp(out.x,0,rect.width-out.w); out.y=clamp(out.y,0,rect.height-out.h);
+        return settings.snap ? snapRect(out) : out;
+      };
+      if (selectedIds.length>1 && groupBoxAtStart){
+        const gb = applyResize(groupBoxAtStart, resizeHandle, dx, dy);
+        for (const s of startRects){
+          const it = edits.find(e=>e.id===s.id);
+          const rel = { x:(s.rect.x-groupBoxAtStart.x)/groupBoxAtStart.w, y:(s.rect.y-groupBoxAtStart.y)/groupBoxAtStart.h, w:s.rect.w/groupBoxAtStart.w, h:s.rect.h/groupBoxAtStart.h };
+          it.rectCss = { x: gb.x + rel.x*gb.w, y: gb.y + rel.y*gb.h, w: rel.w*gb.w, h: rel.h*gb.h };
+        }
+      } else {
+        const it = edits.find(e=>e.id===selectedIds[0]);
+        it.rectCss = applyResize(startRects[0].rect, resizeHandle, dx, dy);
+      }
+      drawOverlay();
+    } else if (dragMode==='rotate'){
+      // item rotate by drag (free) — still allowed, but buttons snap to 90°
+      const gb = groupBoxAtStart || edits.find(e=>e.id===selectedIds[0]).rectCss;
+      const center = { x: gb.x + gb.w/2, y: gb.y + gb.h/2 };
+      const a0 = Math.atan2(dragStart.y - center.y, dragStart.x - center.x);
+      const a1 = Math.atan2((ev.clientY-rect.top) - center.y, (ev.clientX-rect.left) - center.x);
+      let deg = (a1 - a0) * 180/Math.PI;
+      for (const s of startRects){ const it = edits.find(e=>e.id===s.id); it.rot = (s.rot||0) + deg; }
+      drawOverlay();
+    }
+    return;
+  }
+
+  if (toolDragging){
+    const rect = el.pdfCanvas.getBoundingClientRect();
+    const cssX = clamp(ev.clientX-rect.left, 0, rect.width);
+    const cssY = clamp(ev.clientY-rect.top, 0, rect.height);
+    drawRubber(cssX, cssY);
+  }
+});
+
+window.addEventListener('mouseup', (ev)=>{
+  if (panning){ panning=false; return; }
+  if (dragMode){ pushHistory(); dragMode=null; startRects=null; resizeHandle=null; groupBoxAtStart=null; return; }
+
+  if (toolDragging){
+    const rect = el.pdfCanvas.getBoundingClientRect();
+    const cssX = clamp(ev.clientX-rect.left,0,rect.width);
+    const cssY = clamp(ev.clientY-rect.top,0,rect.height);
+    const isClick = Math.abs(cssX-toolDragStart.x)<3 && Math.abs(cssY-toolDragStart.y)<3;
+    let r = isClick ? { x:toolDragStart.x, y:toolDragStart.y, w:160, h:24 } : normalizeCssRect(toolDragStart,{x:cssX,y:cssY});
+    if (settings.snap) r = snapRect(r);
+
+    const tool = el.tool.value;
+    if (tool==='redact'){
+      pushHistory();
+      const it = { id:nextId++, type:'redact', page:currentPageIndex, rectCss:r, color: el.redactColor.value, rot:0 };
+      edits.push(it); selectedIds=[it.id];
+    } else if (tool==='image'){
+      const f = el.imgFile.files?.[0];
+      if (!f){ alert('Choose an image first'); }
+      else { pushHistory(); const url = URL.createObjectURL(f); const it={ id:nextId++, type:'image', page:currentPageIndex, rectCss:r, imageUrl:url, rot:0 }; edits.push(it); selectedIds=[it.id]; }
+    } else if (tool==='editText'){
+      const text = el.textValue.value||''; if (text.trim()){
+        pushHistory();
+        const it = {
+          id:nextId++, type:'text', page:currentPageIndex, rectCss:r, rot:0,
+          text, fontFamily: el.fontFamily.value, fontSize:parseInt(el.fontSize.value||'12',10),
+          align: el.textAlign.value, bold: !!el.bold.checked, italic: !!el.italic.checked,
+          color: el.textColor.value, cover: el.paintColor.value
+        };
+        edits.push(it); selectedIds=[it.id];
+      }
+    } else if (tool==='find'){
+      const hit = findRuns.find(fr=>{
+        const [x,y,w,h] = fr.bboxCss;
+        return (toolDragStart.x>=x && toolDragStart.x<=x+w && toolDragStart.y>=y && toolDragStart.y<=y+h);
+      });
+      if (hit){
+        pushHistory();
+        const it = {
+          id:nextId++, type:'text', page:currentPageIndex,
+          rectCss: { x:hit.bboxCss[0], y:hit.bboxCss[1], w:hit.bboxCss[2], h:Math.max(22, hit.bboxCss[3]) }, rot:0,
+          text: hit.text, fontFamily: el.fontFamily.value, fontSize: parseInt(el.fontSize.value||'12',10),
+          align: 'left', bold:false, italic:false, color:'#000000', cover:'#ffffff'
+        };
+        edits.push(it); selectedIds=[it.id];
+        el.textValue.value = hit.text;
+      }
+    }
+
+    toolDragging=false; toolDragStart=null; drawOverlay();
+  }
+});
+
+/* Keyboard helpers */
+function isTyping(){
+  const a=document.activeElement; if (!a) return false;
+  const tag=a.tagName, type=a.getAttribute&&a.getAttribute('type');
+  const texty=['text','number','color','search','email','url','tel','password'];
+  return tag==='TEXTAREA'||tag==='SELECT'||(tag==='INPUT'&&texty.includes((type||'').toLowerCase()));
+}
+window.addEventListener('keydown', (e)=>{
+  if (e.code==='Space'){ spaceDown=true; e.preventDefault(); }
+  if (!isTyping()){
+    if (e.key==='g'||e.key==='G'){ settings.showGrid=!settings.showGrid; el.showGrid.checked=settings.showGrid; drawOverlay(); }
+    if (e.key==='s'||e.key==='S'){ settings.snap=!settings.snap; el.snap.checked=settings.snap; drawOverlay(); }
+  }
+});
+window.addEventListener('keyup', (e)=>{ if (e.code==='Space'){ spaceDown=false; } });
+
+/* Rotate ITEMS via buttons/shortcuts (lock to 90°) */
+function rotateSelection(direction){
+  if (!selectedIds.length) return;
+  const step = 90;
+  pushHistory();
+  for (const id of selectedIds){
+    const it = edits.find(x => x.id === id);
+    it.rot = ((it.rot || 0) + (direction > 0 ? step : -step)) % 360;
+  }
+  drawOverlay();
+}
+el.rotL && el.rotL.addEventListener('click', ()=>rotateSelection(-1));
+el.rotR && el.rotR.addEventListener('click', ()=>rotateSelection(+1));
+window.addEventListener('keydown', (e)=>{
+  if (e.altKey && !e.ctrlKey && !e.metaKey && e.key.toLowerCase()==='r'){
+    rotateSelection(e.shiftKey ? -1 : +1);
+    e.preventDefault();
+  }
+});
+
+/* Rotate PAGE live (90°) */
+function rotatePage(delta){
+  if (!pageCount) return;
+  const cur = (pageRotDelta[currentPageIndex] || 0);
+  pageRotDelta[currentPageIndex] = ( (cur + delta) % 360 + 360 ) % 360;
+  renderPage(currentPageIndex, true);
+}
+el.pageRotL && el.pageRotL.addEventListener('click', ()=>rotatePage(-90));
+el.pageRotR && el.pageRotR.addEventListener('click', ()=>rotatePage(+90));
+window.addEventListener('keydown', (e)=>{
+  if (e.altKey && !e.ctrlKey && !e.metaKey && e.key.toLowerCase()==='p'){
+    rotatePage(e.shiftKey ? -90 : +90);
+    e.preventDefault();
+  }
+});
+
+/* ====== Clipboard ====== */
+let clipboard = [];
+function copySelection(){ clipboard = selectedIds.map(id=>deepClone(edits.find(e=>e.id===id))); }
+function pasteSelection(){
+  if (!clipboard.length) return;
+  pushHistory(); selectedIds=[];
+  clipboard.forEach(ci=>{
+    const clone = deepClone(ci);
+    clone.id = nextId++; clone.page=currentPageIndex;
+    clone.rectCss.x += 10; clone.rectCss.y += 10;
+    edits.push(clone); selectedIds.push(clone.id);
+  });
+  drawOverlay();
+}
+function duplicateSelection(){ copySelection(); pasteSelection(); }
+
+/* ====== Rubber-band (marquee / create preview) ====== */
+function drawRubber(cssX, cssY){
+  overlayCtx.clearRect(0,0,el.overlay.width, el.overlay.height);
+  drawGrid();
+  const r = normalizeCssRect(toolDragStart,{x:cssX,y:cssY});
+  const rd = toDev(r);
+  overlayCtx.lineWidth = 2*dpr();
+  overlayCtx.setLineDash([6*dpr(),4*dpr()]);
+  overlayCtx.strokeStyle = "rgba(59,130,246,0.9)";
+  overlayCtx.strokeRect(rd.x,rd.y,rd.w,rd.h);
+  overlayCtx.fillStyle = "rgba(59,130,246,0.15)";
+  overlayCtx.fillRect(rd.x,rd.y,rd.w,rd.h);
+}
+
+/* ====== Zoom & wheel (higher max + cursor anchoring) ====== */
+const MIN_Z = 0.1, MAX_Z = 20, ZF = 1.12;
+
+el.zoomIn.onclick  = ()=>{ zoom = clamp(zoom*ZF, MIN_Z, MAX_Z); renderPage(currentPageIndex); };
+el.zoomOut.onclick = ()=>{ zoom = clamp(zoom/ZF, MIN_Z, MAX_Z); renderPage(currentPageIndex); };
+el.zoomReset.onclick = ()=>{ zoom = 1; renderPage(currentPageIndex, true); };
+
+el.scroller.addEventListener('wheel', (e)=>{
+  if (!e.ctrlKey) return;
+  e.preventDefault();
+  const rect = el.pdfCanvas.getBoundingClientRect();
+  const old = zoom;
+  const mx = (e.clientX-rect.left) + el.scroller.scrollLeft;
+  const my = (e.clientY-rect.top)  + el.scroller.scrollTop;
+  zoom = clamp(zoom*(e.deltaY<0? ZF : 1/ZF), MIN_Z, MAX_Z);
+  const ratio = zoom/old;
+  renderPage(currentPageIndex).then(()=>{
+    el.scroller.scrollLeft = Math.max(0, (mx*ratio)-(e.clientX-rect.left));
+    el.scroller.scrollTop  = Math.max(0, (my*ratio)-(e.clientY-rect.top));
+  });
+}, {passive:false});
+
+window.addEventListener('resize', ()=>{ if (pdfDocRender) renderPage(currentPageIndex, false); });
+
+/* ====== Page operations ====== */
+async function reorderPages(order){
+  const total = pdfDocWriter.getPageCount();
+  const copies = await pdfDocWriter.copyPages(pdfDocWriter, [...Array(total).keys()]);
+  const newDoc = await PDFLib.PDFDocument.create();
+  for (const idx of order){ newDoc.addPage(copies[idx]); }
+  const newBytes = await newDoc.save();
+  await loadBoth(newBytes);
+}
+async function insertBlank(atIndex){
+  pdfDocWriter.addPage(); // add at end
+  const total = pdfDocWriter.getPageCount();
+  const order = [...Array(total-1).keys()];
+  order.splice(atIndex, 0, total-1);
+  await reorderPages(order);
+}
+async function duplicatePage(idx){
+  const [copied] = await pdfDocWriter.copyPages(pdfDocWriter, [idx]);
+  pdfDocWriter.insertPage(idx+1, copied);
+}
+async function deletePage(idx){
+  if (pdfDocWriter.getPageCount()<=1) return;
+  pdfDocWriter.removePage(idx);
+}
+async function movePage(idx, dir){
+  const total = pdfDocWriter.getPageCount();
+  const to = clamp(idx+dir, 0, total-1);
+  if (to===idx) return;
+  const order = [...Array(total).keys()];
+  const [p] = order.splice(idx,1);
+  order.splice(to,0,p);
+  await reorderPages(order);
+  currentPageIndex = to;
+}
+
+el.pageInsertBefore.onclick = async()=>{ await insertBlank(currentPageIndex); await renderPage(currentPageIndex, true); };
+el.pageInsertAfter.onclick  = async()=>{ await insertBlank(currentPageIndex+1); currentPageIndex++; await renderPage(currentPageIndex, true); };
+el.pageDuplicate.onclick    = async()=>{ await duplicatePage(currentPageIndex); currentPageIndex++; await renderPage(currentPageIndex, true); };
+el.pageDelete.onclick       = async()=>{ await deletePage(currentPageIndex); currentPageIndex = clamp(currentPageIndex-1,0,pdfDocWriter.getPageCount()-1); await renderPage(currentPageIndex, true); };
+el.pageUp.onclick           = async()=>{ await movePage(currentPageIndex,-1); await renderPage(currentPageIndex, true); };
+el.pageDown.onclick         = async()=>{ await movePage(currentPageIndex, 1); await renderPage(currentPageIndex, true); };
+
+/* ====== Apply staged items into PDF ====== */
+function hexToRgb(hex){
+  const h = hex.replace('#',''); const n = parseInt(h,16);
+  const r = (h.length===3)?((n>>8)&0xF)*17:(n>>16)&0xFF;
+  const g = (h.length===3)?((n>>4)&0xF)*17:(n>>8)&0xFF;
+  const b = (h.length===3)?(n&0xF)*17:(n&0xFF);
+  return PDFLib.rgb(r/255,g/255,b/255);
+}
+
+async function applyEditsToPdf(){
+  if (!pdfDocWriter) return;
+
+  if (!edits.length){
+    const ok = confirm('No staged items to apply. Continue anyway?');
+    if (!ok) return;
+  } else {
+    const ok = confirm(`Apply ${edits.length} staged item${edits.length>1?'s':''} into the PDF?\nThis will embed text/images/redactions on their pages.`);
+    if (!ok) return;
+  }
+
+  // embed custom font if chosen
+  if (customFontBytes && !customFontEmbedded){
+    try{ customFontEmbedded = await pdfDocWriter.embedFont(customFontBytes); }catch(_){}
+  }
+
+  for (const it of edits){
+    const page = pdfDocWriter.getPage(it.page);
+    const r = cssRectToPdf(it.rectCss);
+    const rot = PDFLib.degrees(it.rot||0);
+
+    if (it.type === 'redact'){
+      page.drawRectangle({ x:r.x, y:r.y, width:r.w, height:r.h, color: hexToRgb(it.color||'#000000'), rotate:rot });
+    }
+    else if (it.type === 'image' && it.imageUrl){
+      const blob = await fetch(it.imageUrl).then(r=>r.blob());
+      const buf = await blob.arrayBuffer();
+      const img = blob.type.includes('png') ? await pdfDocWriter.embedPng(buf) : await pdfDocWriter.embedJpg(buf);
+      const s = Math.min(r.w/img.width, r.h/img.height);
+      const w = img.width*s, h = img.height*s;
+      page.drawImage(img, { x:r.x, y:r.y, width:w, height:h, rotate:rot });
+    }
+    else if (it.type === 'text'){
+      // cover background first
+      page.drawRectangle({ x:r.x, y:r.y, width:r.w, height:r.h, color: hexToRgb(it.cover||'#FFFFFF'), rotate:rot });
+
+      // choose font
+      let font = null;
+      if (it.fontFamily==='Custom' && customFontEmbedded) font = customFontEmbedded;
+      else {
+        const S = PDFLib.StandardFonts;
+        const map = { Helvetica:S.Helvetica, TimesRoman:S.TimesRoman, Courier:S.Courier };
+        font = await pdfDocWriter.embedFont(map[it.fontFamily]||S.Helvetica);
+      }
+
+      const size = clamp(parseInt(it.fontSize||'12',10), 6, 120);
+      const color = hexToRgb(it.color||'#000000');
+      const text = it.text||'';
+
+      // approximate alignment
+      const width = font.widthOfTextAtSize(text, size);
+      let x = r.x + 2, y = r.y + 2;
+      if (it.align==='center') x = r.x + (r.w/2) - width/2;
+      if (it.align==='right')  x = r.x + r.w - 2 - width;
+
+      // faux bold/italic for preview parity
+      const strokes = it.bold ? [{dx:0,dy:0},{dx:0.3,dy:0}] : [{dx:0,dy:0}];
+      for (const d of strokes){
+        page.drawText(text, { x:x+d.dx, y:y+d.dy, size, font, color, rotate:rot, maxWidth:r.w-4 });
+      }
+      if (it.italic){
+        page.drawText(text, { x:x+0.5, y:y, size, font, color, rotate:PDFLib.degrees((it.rot||0)-8), maxWidth:r.w-4 });
+      }
+    }
+  }
+
+  // NEW: Commit page rotations (apply after drawing so marks rotate with the page)
+  for (let i=0; i<pdfDocWriter.getPageCount(); i++){
+    const delta = (pageRotDelta[i] || 0);
+    if (delta){
+      const p = pdfDocWriter.getPage(i);
+      const base = (p.getRotation()?.angle) || 0;
+      p.setRotation(PDFLib.degrees((base + delta) % 360));
+    }
+  }
+
+  // clear staged and refresh
+  edits=[]; selectedIds=[];
+  const newBytes = await pdfDocWriter.save();
+  await loadBoth(newBytes);
+
+  // reset visual deltas now that rotations are baked in
+  pageRotDelta = new Array(pageCount).fill(0);
+}
+
+/* ====== Save / Download ====== */
+el.apply.onclick = ()=>applyEditsToPdf();
+
+el.download.onclick = async ()=>{
+  await applyEditsToPdf();
+  const bytes = await pdfDocWriter.save();
+  const blob = new Blob([bytes], {type:'application/pdf'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='edited.pdf'; a.click();
+};
+
+el.save.onclick = async ()=>{
+  await applyEditsToPdf();
+  const bytes = await pdfDocWriter.save();
+  const blob = new Blob([bytes], {type:'application/pdf'});
+  const form = new FormData();
+  form.append('file', blob, 'edited.pdf');
+  form.append('name', (el.versionName.value||'edited').trim());
+  form.append('keep', (el.keepN.value||'5'));
+  const res = await fetch('api/save.php', { method:'POST', body: form });
+  if (!res.ok){ alert('Save failed'); return; }
+  const json = await res.json();
+  alert(json?.ok ? ('Saved: ' + json.path) : 'Save failed');
+};
+
+/* ====== UI wiring & context-aware inputs ====== */
+el.undo.onclick=()=>undo();
+el.redo.onclick=()=>redo();
+el.duplicate.onclick=()=>duplicateSelection();
+el.del.onclick=()=>{ if (!selectedIds.length) return; pushHistory(); edits = edits.filter(e=>!selectedIds.includes(e.id)); selectedIds=[]; drawOverlay(); };
+
+el.snap.onchange=()=>{ settings.snap = el.snap.checked; };
+el.gridSize.onchange=()=>{ settings.grid = clamp(parseInt(el.gridSize.value||'8',10), 2, 64); drawOverlay(); };
+el.showGrid.onchange=()=>{ settings.showGrid = el.showGrid.checked; drawOverlay(); };
+
+el.file.onchange = async (e)=>{
+  const f=e.target.files?.[0]; if(!f) return;
+  const buf=await f.arrayBuffer();
+  edits=[]; undoStack=[]; redoStack=[]; selectedIds=[];
+  await loadBoth(buf);
+};
+
+el.customFont.onchange = async (e)=>{
+  const f = e.target.files?.[0]; if (!f) return;
+  customFontBytes = new Uint8Array(await f.arrayBuffer());
+  customFontEmbedded = null;
+  alert('Custom font loaded. Choose "Custom TTF" in Font to use it.');
+};
+
+function contextualizeUI(){
+  const tool = el.tool.value;
+  el.imgFile.classList.toggle('hidden', tool !== 'image');
+  el.findInput.classList.toggle('hidden', tool !== 'find');
+  el.findNext.classList.toggle('hidden', tool !== 'find');
+  document.getElementById('customFont').classList.toggle('hidden', el.fontFamily.value !== 'Custom');
+}
+el.tool.addEventListener('change', contextualizeUI);
+el.fontFamily.addEventListener('change', contextualizeUI);
+
+/* ====== Find navigation ====== */
+el.findNext.onclick=()=>{
+  const q = (el.findInput.value||'').toLowerCase();
+  const hits = findRuns.map((r,i)=>({i,hit:r.text.toLowerCase().includes(q)})).filter(x=>x.hit);
+  if (!hits.length){ el.findCount.textContent='0 matches'; return; }
+  const order = hits.map(h=>h.i).sort((a,b)=>a-b);
+  const pos = order.indexOf(findIndex);
+  const next = order[(pos+1) % order.length];
+  findIndex = next;
+
+  overlayCtx.clearRect(0,0,el.overlay.width, el.overlay.height);
+  drawGrid();
+  const fr = findRuns[findIndex];
+  const rd = toDev({x:fr.bboxCss[0], y:fr.bboxCss[1], w:fr.bboxCss[2], h:fr.bboxCss[3]});
+  overlayCtx.lineWidth = 3*dpr(); overlayCtx.strokeStyle="rgba(34,197,94,0.95)";
+  overlayCtx.strokeRect(rd.x, rd.y, rd.w, rd.h);
+  el.findCount.textContent = `${order.indexOf(findIndex)+1}/${order.length}`;
+};
+
+/* ====== Boot ====== */
+el.snap.checked = settings.snap;
+el.gridSize.value = settings.grid;
+el.showGrid.checked = settings.showGrid;
+contextualizeUI();
+</script>
+
+</body>
+</html>
