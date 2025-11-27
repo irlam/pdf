@@ -206,27 +206,45 @@ function setupDragReorder() {
 }
 
 async function addPdfFiles(files) {
+  const pdfFilesToProcess = [];
+  
+  // Filter valid PDF files first
   for (const file of files) {
     if (!file.type.includes('pdf') && !file.name.toLowerCase().endsWith('.pdf')) {
       alert(`Skipping "${file.name}" - not a PDF file`);
       continue;
     }
-    
-    try {
-      updateProgress(0, `Loading ${file.name}...`);
+    pdfFilesToProcess.push(file);
+  }
+  
+  if (pdfFilesToProcess.length === 0) {
+    hideProgress();
+    return;
+  }
+  
+  updateProgress(0, `Loading ${pdfFilesToProcess.length} file(s)...`);
+  
+  // Process files in parallel for better performance
+  const results = await Promise.allSettled(
+    pdfFilesToProcess.map(async (file, index) => {
       const data = await file.arrayBuffer();
-      
-      // Validate and get page count
       const pdf = await PDFDocument.load(data);
       const pageCount = pdf.getPageCount();
-      
-      pdfFiles.push({ name: file.name, data, pageCount });
-      updateUI();
-    } catch (err) {
-      console.error(`Error loading ${file.name}:`, err);
-      alert(`Failed to load "${file.name}": ${err.message}`);
+      return { name: file.name, data, pageCount };
+    })
+  );
+  
+  // Add successful results, report failures
+  results.forEach((result, index) => {
+    if (result.status === 'fulfilled') {
+      pdfFiles.push(result.value);
+    } else {
+      console.error(`Error loading ${pdfFilesToProcess[index].name}:`, result.reason);
+      alert(`Failed to load "${pdfFilesToProcess[index].name}": ${result.reason.message}`);
     }
-  }
+  });
+  
+  updateUI();
   hideProgress();
 }
 

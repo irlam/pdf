@@ -36,6 +36,8 @@
     @keyframes spin{ to{ transform:rotate(360deg); } }
     /* Error message styling */
     .error-toast{ position:fixed; bottom:24px; right:24px; background:#7f1d1d; border:1px solid #ef4444; color:#fecaca; padding:12px 20px; border-radius:10px; z-index:1001; max-width:400px; box-shadow:0 4px 16px rgba(0,0,0,0.4); animation:slideIn 0.3s ease; }
+    /* Warning message styling */
+    .warning-toast{ position:fixed; bottom:24px; right:24px; background:#78350f; border:1px solid #f59e0b; color:#fef3c7; padding:12px 20px; border-radius:10px; z-index:1001; max-width:400px; box-shadow:0 4px 16px rgba(0,0,0,0.4); animation:slideIn 0.3s ease; }
     @keyframes slideIn{ from{ transform:translateX(100%); opacity:0; } to{ transform:translateX(0); opacity:1; } }
   </style>
 </head>
@@ -1123,6 +1125,13 @@ function showError(message, duration = 5000) {
   document.body.appendChild(toast);
   setTimeout(() => toast.remove(), duration);
 }
+function showWarning(message, duration = 5000) {
+  const toast = document.createElement('div');
+  toast.className = 'warning-toast';
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), duration);
+}
 
 /* ====== Drag and Drop support ====== */
 const dropZone = document.getElementById('dropZone');
@@ -1136,10 +1145,10 @@ async function handlePdfFile(file) {
     return;
   }
   
-  // Warn about large files
+  // Warn about large files (but still process them)
   const MAX_SIZE = 50 * 1024 * 1024; // 50MB
   if (file.size > MAX_SIZE) {
-    showError('Warning: Large files may take a while to process.');
+    showWarning('Large file detected. Processing may take a while.');
   }
   
   try {

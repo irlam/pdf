@@ -106,9 +106,14 @@ if (!move_uploaded_file($uploadedFile['tmp_name'], $path)) {
 // Prune old versions (keep only last N files)
 $files = glob($baseDir . '/edited-*.pdf');
 if ($files !== false && count($files) > $keepN) {
-    // Sort by modification time (oldest first)
+    // Sort by modification time (oldest first), handling potential filemtime failures
     usort($files, function($a, $b) {
-        return filemtime($a) - filemtime($b);
+        $timeA = @filemtime($a);
+        $timeB = @filemtime($b);
+        // If either file is missing, treat it as very old (will be removed)
+        if ($timeA === false) $timeA = 0;
+        if ($timeB === false) $timeB = 0;
+        return $timeA - $timeB;
     });
     // Remove oldest files beyond keepN
     $toRemove = array_slice($files, 0, count($files) - $keepN);

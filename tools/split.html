@@ -211,9 +211,15 @@ function addRange(value = '') {
   
   // Remove button
   li.querySelector('.remove').addEventListener('click', (e) => {
-    const idx = parseInt(e.target.dataset.index, 10);
     li.remove();
-    ranges[idx] = null; // Mark as removed
+    // Rebuild ranges array from remaining DOM elements
+    ranges = [];
+    rangeList.querySelectorAll('input[data-index]').forEach((input, i) => {
+      ranges.push(input.value);
+      input.dataset.index = i;
+      input.closest('li').querySelector('.remove').dataset.index = i;
+      input.closest('li').querySelector('span:first-child').textContent = `#${i + 1}`;
+    });
     updateSplitButton();
   });
   
@@ -294,7 +300,9 @@ async function splitPdf() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `split-${i + 1}-pages-${rangeStr.replace(/[^0-9,-]/g, '')}.pdf`;
+      // Create descriptive filename with range and page count
+      const sanitizedRange = rangeStr.replace(/[^0-9,-]/g, '_').replace(/_+/g, '_');
+      a.download = `split-${i + 1}-${pageIndices.length}pages-${sanitizedRange}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
       
