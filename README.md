@@ -103,17 +103,15 @@ The DWG viewer requires additional JavaScript libraries in `/vendor/`:
 ```bash
 # Three.js (for 3D/2D rendering)
 cd /path/to/pdf/vendor/three
-curl -o three.min.js https://cdnjs.cloudflare.com/ajax/libs/three.js/r160/three.min.js
+curl -o three.min.js https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js
 curl -o OrbitControls.js https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js
 
 # DXF Parser
 cd /path/to/pdf/vendor/dxf-parser
 curl -o dxf-parser.min.js https://cdn.jsdelivr.net/npm/dxf-parser@1.1.2/dist/dxf-parser.min.js
-
-# PDF-lib (for PDF export - optional, already in /vendor/pdf-lib.min.js)
-cd /path/to/pdf/vendor/pdf-lib
-curl -o pdf-lib.min.js https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js
 ```
+
+**Note**: PDF-lib is already included at `/vendor/pdf-lib.min.js` and does not need to be downloaded separately.
 
 ### Custom Fonts for Text Editing
 
@@ -169,10 +167,11 @@ See `/fonts/README.md` for detailed instructions.
 ├── /vendor/            # Self-hosted dependencies
 │   ├── pdf.min.js      # PDF.js for rendering
 │   ├── pdf.worker.min.js
-│   ├── pdf-lib.min.js  # pdf-lib for editing
+│   ├── pdf-lib.min.js  # pdf-lib for editing (main editor)
+│   ├── jszip.min.js    # ZIP file handling
 │   ├── /three/         # Three.js (for DWG viewer)
 │   ├── /dxf-parser/    # DXF parser (for DWG viewer)
-│   └── /pdf-lib/       # pdf-lib (for DWG viewer PDF export)
+│   └── /pdf-lib/       # pdf-lib copy (for DWG viewer)
 │
 └── /storage/           # Saved PDF versions (server-side)
 ```

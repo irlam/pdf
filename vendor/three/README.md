@@ -13,7 +13,7 @@ This directory should contain Three.js files for the DWG/DXF viewer.
 
 ```bash
 # Download Three.js r160 (stable version)
-curl -o three.min.js https://cdnjs.cloudflare.com/ajax/libs/three.js/r160/three.min.js
+curl -o three.min.js https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js
 
 # Download OrbitControls
 curl -o OrbitControls.js https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js

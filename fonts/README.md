@@ -64,8 +64,10 @@ If you frequently use specific fonts, you can store them here for easy access:
 |--------|-----------|---------|
 | TrueType | `.ttf` | ✅ Full |
 | OpenType | `.otf` | ✅ Full |
-| TrueType Collection | `.ttc` | ✅ Partial |
-| OpenType Collection | `.otc` | ✅ Partial |
+| TrueType Collection | `.ttc` | ⚠️ First font only |
+| OpenType Collection | `.otc` | ⚠️ First font only |
+
+**Note**: Collection files (`.ttc`/`.otc`) contain multiple fonts. The editor can only use the first font in the collection. Extract individual fonts if you need a specific variant.
 
 ## Troubleshooting
 

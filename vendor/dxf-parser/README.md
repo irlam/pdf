@@ -21,9 +21,9 @@ npm install dxf-parser@1.1.2
 cp node_modules/dxf-parser/dist/dxf-parser.min.js .
 ```
 
-### Option 3: From GitHub
+### Option 3: From npm
 
-Download from: https://github.com/gdsestimating/dxf-parser/releases
+Package page: https://www.npmjs.com/package/dxf-parser
 
 ## After Download
 
