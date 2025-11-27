@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>DWG Viewer (DXF render + PDF export)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/assets/ui.css?v=<?=filemtime($_SERVER['DOCUMENT_ROOT'].'/assets/ui.css')?>">
+
+  <style>
+    :root{ --bg:#0b1220; --card:#111827; --text:#e5e7eb; --muted:#94a3b8; --border:#1f2937; }
+    html,body{ margin:0; background:var(--bg); color:var(--text);
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial,sans-serif; }
+    .wrap{ max-width:1300px; margin:18px auto; padding:0 14px; }
+
+    .panel{
+      display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+      padding:8px; background:linear-gradient(180deg,#111827,#0f172a);
+      border:1px solid var(--border); border-radius:12px; margin-bottom:10px;
+    }
+    .panel .sp{ flex:1 }
+    .panel .muted{ font-size:12px; color:var(--muted) }
+
+    #stage{
+      height:78vh; background:#0b0b0b; border:1px solid var(--border); border-radius:12px;
+      position:relative; overflow:hidden;
+    }
+    #canvas-holder{ position:absolute; inset:0; }
+    #side{
+      position:absolute; top:10px; right:10px; width:260px; max-height:calc(100% - 20px);
+      overflow:auto; background:#0f172a; border:1px solid var(--border); border-radius:12px; padding:10px;
+      box-shadow:0 8px 24px rgba(0,0,0,.35);
+    }
+    #side h3{ margin:0 0 8px; font-size:15px; }
+    #layers{ display:grid; grid-template-columns: 1fr auto; gap:6px 8px; font-size:13px; }
+    #layers .lname{ color:#cbd5e1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    #layers .lvis{ text-align:right; }
+
+    .coord{ position:absolute; left:10px; bottom:10px; background:#0f172a; border:1px solid var(--border);
+      border-radius:8px; padding:6px 8px; font-size:12px; color:#cbd5e1; }
+
+    /* tiny spacing tweaks for ultra-compact header */
+    .panel .chip{ height:30px; min-width:66px }
+    .panel input[type=file]{ height:34px }
+    .btn-accent{ background:linear-gradient(180deg, var(--blue,#2563eb), #1e40af) !important; border-color:rgba(37,99,235,.6) !important; }
+  </style>
+</head>
+<body>
+
+<header class="topnav">
+  <div class="brand">DWG Viewer</div>
+  <nav>
+    <a href="/index.html">Editor</a>
+    <a href="/tools/crop.html">Crop</a>
+    <a href="/tools/convert.html">Convert</a>
+    <a href="/help.html">Help</a>
+  </nav>
+</header>
+
+<div class="wrap">
+  <div class="panel">
+    <!-- Upload DWG (server will convert to DXF) -->
+    <input id="dwg" type="file" accept=".dwg" />
+    <select id="ver" title="Target DXF version">
+      <option value="">DXF Auto</option>
+      <option value="r2013">DXF R2013</option>
+      <option value="r2010">DXF R2010</option>
+      <option value="r2007">DXF R2007</option>
+      <option value="r2004">DXF R2004</option>
+      <option value="r2000">DXF R2000</option>
+      <option value="r14">DXF R14</option>
+      <option value="r12">DXF R12</option>
+    </select>
+    <button id="convert" class="btn-accent">Open DWG</button>
+
+    <div class="btn-group">
+      <button id="zout">−</button>
+      <span id="zoom" class="chip mini">100%</span>
+      <button id="zin">+</button>
+    </div>
+    <button id="fit">Fit</button>
+    <div class="btn-group">
+      <button id="measure">Measure</button>
+      <span class="chip mini" id="measureHint">Off</span>
+    </div>
+
+    <span class="sp"></span>
+
+    <!-- Export current view to single-page PDF -->
+    <button id="exportPdf" title="Export current view to a single-page PDF" class="btn-accent">Export PDF</button>
+
+    <span class="muted">Tip: drag = pan, wheel = zoom, Shift+drag = measure</span>
+  </div>
+
+  <div id="stage">
+    <div id="canvas-holder"></div>
+    <div id="side">
+      <h3>Layers</h3>
+      <div id="layers"></div>
+      <hr style="border-color:#1f2937; opacity:.5">
+      <div class="muted">
+        This viewer renders DXF (converted from DWG on your server).
+        “Export PDF” captures the **current screen view** to a one-page PDF.
+      </div>
+    </div>
+    <div class="coord" id="coord">x: —  y: —</div>
+  </div>
+</div>
+
+<!-- Self-hosted libs -->
+<script src="/vendor/three/three.min.js"></script>
+<script src="/vendor/three/OrbitControls.js"></script>
+<script src="/vendor/dxf-parser/dxf-parser.min.js"></script>
+<script src="/vendor/pdf-lib/pdf-lib.min.js"></script>
+
+<script>
+/* ===== State / elements ===== */
+const el = {
+  dwg: document.getElementById('dwg'),
+  ver: document.getElementById('ver'),
+  convert: document.getElementById('convert'),
+  zin: document.getElementById('zin'), zout: document.getElementById('zout'), zoom: document.getElementById('zoom'),
+  fit: document.getElementById('fit'),
+  holder: document.getElementById('canvas-holder'),
+  layers: document.getElementById('layers'),
+  coord: document.getElementById('coord'),
+  measureBtn: document.getElementById('measure'),
+  measureHint: document.getElementById('measureHint'),
+  exportPdf: document.getElementById('exportPdf')
+};
+let renderer, scene, camera, controls;
+let rootGroup = new THREE.Group();
+let layerGroups = new Map(); // name -> Group
+let bbox = new THREE.Box3();
+let measureMode = false;
+let measureStart = null;
+let measureOverlay;
+let pixelRatio = Math.max(1, window.devicePixelRatio || 1);
+
+/* ===== Init Three scene ===== */
+init3D();
+function init3D(){
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0b0b0b);
+  scene.add(rootGroup);
+
+  const w = el.holder.clientWidth || 800;
+  const h = el.holder.clientHeight || 600;
+  camera = new THREE.OrthographicCamera(-w/2, w/2, h/2, -h/2, -1e6, 1e6);
+  camera.position.set(0,0,1000);
+  camera.up.set(0,1,0);
+
+  renderer = new THREE.WebGLRenderer({ antialias:true, preserveDrawingBuffer:true }); // preserve for toDataURL
+  renderer.setPixelRatio(pixelRatio);
+  renderer.setSize(w, h);
+  el.holder.innerHTML = '';
+  el.holder.appendChild(renderer.domElement);
+
+  controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableRotate = false;
+  controls.zoomSpeed = 1.3;
+  controls.addEventListener('change', draw);
+
+  renderer.domElement.addEventListener('mousemove', onMove);
+  renderer.domElement.addEventListener('mousedown', onDown);
+  window.addEventListener('resize', onResize);
+
+  requestAnimationFrame(tick);
+}
+function tick(){ draw(); requestAnimationFrame(tick); }
+function draw(){ renderer.render(scene, camera); setZoomDisplay(); }
+function onResize(){
+  const w = el.holder.clientWidth, h = el.holder.clientHeight;
+  const cx = (camera.left + camera.right)/2;
+  const cy = (camera.top + camera.bottom)/2;
+  const halfH = (camera.top - camera.bottom)/2;
+  const aspect = w/h;
+  camera.left   = cx - halfH*aspect;
+  camera.right  = cx + halfH*aspect;
+  camera.top    = cy + halfH;
+  camera.bottom = cy - halfH;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  draw();
+}
+function setZoomDisplay(){
+  const frustumH = camera.top - camera.bottom;
+  const pct = Math.round(100 * (500 / (frustumH/2)));
+  el.zoom.textContent = pct + '%';
+}
+
+/* ===== Mouse/Measure ===== */
+function worldToScreen(v){
+  const p = v.clone().project(camera);
+  const w = renderer.domElement.width / pixelRatio;
+  const h = renderer.domElement.height / pixelRatio;
+  return new THREE.Vector2((p.x+1)/2*w, (1-p.y)/2*h);
+}
+function screenToWorld(sx, sy){
+  const rect = renderer.domElement.getBoundingClientRect();
+  const x = (sx / rect.width) * 2 - 1;
+  const y = -(sy / rect.height) * 2 + 1;
+  const ndc = new THREE.Vector3(x, y, 0);
+  ndc.unproject(camera);
+  return new THREE.Vector2(ndc.x, ndc.y);
+}
+function onMove(e){
+  const pt = screenToWorld(e.offsetX, e.offsetY);
+  el.coord.textContent = `x: ${pt.x.toFixed(3)}   y: ${pt.y.toFixed(3)}`;
+  if (measureMode && measureStart){ updateMeasure(measureStart, pt); }
+}
+function onDown(e){
+  if (!measureMode) return;
+  const pt = screenToWorld(e.offsetX, e.offsetY);
+  if (!measureStart){ measureStart = pt; ensureMeasureOverlay(); updateMeasure(pt, pt); }
+  else { updateMeasure(measureStart, pt, true); measureStart = null; }
+}
+function ensureMeasureOverlay(){
+  if (measureOverlay) return;
+  const mat = new THREE.LineBasicMaterial({ color: 0xff3355 });
+  const geom = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+  const line = new THREE.Line(geom, mat); line.renderOrder = 999;
+  const label = document.createElement('div');
+  label.style.position='absolute'; label.style.pointerEvents='none';
+  label.style.background='#ff3355'; label.style.color='#fff'; label.style.font='12px/1 sans-serif';
+  label.style.padding='4px 6px'; label.style.borderRadius='8px';
+  label.style.transform='translate(-50%,-120%)'; label.style.zIndex='10';
+  el.holder.appendChild(label);
+  measureOverlay = { line, label };
+  scene.add(line);
+}
+function updateMeasure(a, b){
+  ensureMeasureOverlay();
+  const { line, label } = measureOverlay;
+  line.geometry.setFromPoints([ new THREE.Vector3(a.x,a.y,0), new THREE.Vector3(b.x,b.y,0) ]);
+  line.geometry.attributes.position.needsUpdate = true;
+  const mid = new THREE.Vector2((a.x+b.x)/2, (a.y+b.y)/2);
+  const scr = worldToScreen(new THREE.Vector3(mid.x, mid.y, 0));
+  label.textContent = distance(a,b).toFixed(3);
+  label.style.left = `${scr.x}px`;
+  label.style.top  = `${scr.y}px`;
+}
+function distance(a,b){ const dx=a.x-b.x, dy=a.y-b.y; return Math.hypot(dx,dy); }
+
+/* ===== UI controls ===== */
+el.measureBtn.onclick = ()=>{ measureMode = !measureMode; el.measureHint.textContent = measureMode ? 'Measuring' : 'Off'; };
+el.zin.onclick = ()=> zoomBy(1.15);
+el.zout.onclick = ()=> zoomBy(1/1.15);
+el.fit.onclick = fitView;
+function zoomBy(f){
+  const cx = (camera.left + camera.right)/2;
+  const cy = (camera.top + camera.bottom)/2;
+  const halfW = (camera.right - camera.left)/(2*f);
+  const halfH = (camera.top - camera.bottom)/(2*f);
+  camera.left = cx - halfW; camera.right = cx + halfW;
+  camera.top  = cy + halfH; camera.bottom = cy - halfH;
+  camera.updateProjectionMatrix(); draw();
+}
+function fitView(){
+  if (bbox.isEmpty()) return;
+  const pad = 20;
+  const w = renderer.domElement.clientWidth, h = renderer.domElement.clientHeight;
+  const bbW = bbox.max.x - bbox.min.x;
+  const bbH = bbox.max.y - bbox.min.y;
+  const cx = (bbox.min.x + bbox.max.x)/2;
+  const cy = (bbox.min.y + bbox.max.y)/2;
+  const scale = Math.max(bbW/(w-pad*2), bbH/(h-pad*2));
+  const halfW = (w*scale)/2;
+  const halfH = (h*scale)/2;
+  camera.left = cx - halfW; camera.right = cx + halfW;
+  camera.top  = cy + halfH; camera.bottom = cy - halfH;
+  camera.updateProjectionMatrix(); controls.target.set(cx,cy,0); draw();
+}
+
+/* ===== DXF build/render ===== */
+function clearScene(){
+  for (const [name,g] of layerGroups){ rootGroup.remove(g); }
+  layerGroups.clear();
+  bbox.makeEmpty();
+}
+function colorFromDxfColorNumber(cnum){
+  const aci = [0x000000,0xff0000,0xffff00,0x00ff00,0x00ffff,0x0000ff,0xff00ff,0x808080,0xc0c0c0];
+  if (!cnum || cnum<0) return 0xffffff;
+  if (cnum<aci.length) return aci[cnum];
+  return 0xffffff;
+}
+function ensureLayer(name, color){
+  if (layerGroups.has(name)) return layerGroups.get(name);
+  const g = new THREE.Group(); g.name = name;
+  rootGroup.add(g); layerGroups.set(name, g);
+  addLayerRow(name, color);
+  return g;
+}
+function addLayerRow(name, color){
+  const rowName = document.createElement('div');
+  rowName.className='lname';
+  rowName.textContent = name; rowName.title = name;
+  rowName.style.borderLeft = `10px solid #${color.toString(16).padStart(6,'0')}`;
+
+  const rowVis = document.createElement('div');
+  rowVis.className='lvis';
+  const chk = document.createElement('input'); chk.type='checkbox'; chk.checked = true;
+  chk.addEventListener('change', ()=>{ const g = layerGroups.get(name); if (g) g.visible = chk.checked; draw(); });
+  rowVis.appendChild(chk);
+
+  el.layers.appendChild(rowName);
+  el.layers.appendChild(rowVis);
+}
+function pushBBox(x,y){ bbox.expandByPoint(new THREE.Vector3(x,y,0)); }
+function lineMat(color){ return new THREE.LineBasicMaterial({ color, transparent:true, opacity:0.95 }); }
+
+function buildSceneFromDXF(dxf){
+  clearScene();
+  const layers = (dxf.tables?.layers?.layers) || dxf.tables?.layers || {};
+  const layerColor = {};
+  Object.keys(layers).forEach(k=>{
+    const lay = layers[k];
+    const col = ('colorNumber' in lay) ? colorFromDxfColorNumber(lay.colorNumber) : 0xffffff;
+    layerColor[k] = col;
+  });
+  const ents = dxf.entities || [];
+  for (const e of ents){
+    const layer = e.layer || '0';
+    const g = ensureLayer(layer, layerColor[layer] || 0xffffff);
+    switch(e.type){
+      case 'LINE': {
+        const geo = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(e.start.x, e.start.y, 0),
+          new THREE.Vector3(e.end.x,   e.end.y,   0),
+        ]);
+        const mat = lineMat(layerColor[layer] || 0xffffff);
+        const line = new THREE.Line(geo, mat);
+        g.add(line);
+        pushBBox(e.start.x, e.start.y); pushBBox(e.end.x, e.end.y);
+        break;
+      }
+      case 'LWPOLYLINE':
+      case 'POLYLINE': {
+        if (!e.vertices || e.vertices.length<2) break;
+        const pts = e.vertices.map(v=>new THREE.Vector3(v.x, v.y, 0));
+        const geo = new THREE.BufferGeometry().setFromPoints(pts);
+        const mat = lineMat(layerColor[layer] || 0xffffff);
+        const line = new THREE.Line(geo, mat);
+        g.add(line);
+        for (const v of e.vertices) pushBBox(v.x, v.y);
+        break;
+      }
+      case 'CIRCLE': {
+        const r = e.radius||0, seg=64;
+        const arr=[];
+        for (let i=0;i<=seg;i++){
+          const a=(i/seg)*Math.PI*2;
+          arr.push(e.center.x + Math.cos(a)*r, e.center.y + Math.sin(a)*r, 0);
+        }
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(arr,3));
+        const line = new THREE.Line(geo, lineMat(layerColor[layer] || 0xffffff));
+        g.add(line);
+        pushBBox(e.center.x-r, e.center.y-r); pushBBox(e.center.x+r, e.center.y+r);
+        break;
+      }
+      case 'ARC': {
+        const r=e.radius||0, a1=e.startAngle||0, a2=e.endAngle||0, seg=64;
+        const arr=[];
+        for (let i=0;i<=seg;i++){
+          const t = a1 + (i/seg)*(a2-a1);
+          arr.push(e.center.x + Math.cos(t)*r, e.center.y + Math.sin(t)*r, 0);
+        }
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(arr,3));
+        const line = new THREE.Line(geo, lineMat(layerColor[layer] || 0xffffff));
+        g.add(line);
+        pushBBox(e.center.x-r, e.center.y-r); pushBBox(e.center.x+r, e.center.y+r);
+        break;
+      }
+      case 'TEXT':
+      case 'MTEXT': {
+        const txt = (e.text || e.string || '').replace(/\{\\[^}]+\}/g,'').trim();
+        if (!txt) break;
+        const sprite = makeLabel(txt, layerColor[layer] || 0xffffff);
+        const px = (e.position?.x ?? e.insert?.x ?? 0);
+        const py = (e.position?.y ?? e.insert?.y ?? 0);
+        sprite.position.set(px, py, 0);
+        g.add(sprite);
+        pushBBox(px, py);
+        break;
+      }
+      default: /* ignore others for simplicity */ break;
+    }
+  }
+  fitView(); draw();
+}
+function makeLabel(text, color){
+  const cvs=document.createElement('canvas');
+  const ctx=cvs.getContext('2d');
+  ctx.font='14px sans-serif';
+  const pad=6, w=Math.max(1,Math.ceil(ctx.measureText(text).width+pad*2)), h=22;
+  const pr = pixelRatio;
+  cvs.width=w*pr; cvs.height=h*pr; ctx.scale(pr,pr);
+  ctx.font='14px sans-serif'; ctx.fillStyle=`#${color.toString(16).padStart(6,'0')}`; ctx.fillText(text,pad,16);
+  const tex = new THREE.CanvasTexture(cvs); tex.minFilter = THREE.LinearFilter;
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent:true });
+  const spr = new THREE.Sprite(mat); spr.scale.set(w,h,1);
+  return spr;
+}
+
+/* ===== DWG -> DXF (server) + load DXF ===== */
+el.convert.onclick = async ()=>{
+  const f = el.dwg.files?.[0]; if (!f){ alert('Choose a DWG file'); return; }
+  el.convert.disabled = true; el.convert.textContent = 'Converting…';
+  try{
+    const fd = new FormData();
+    fd.append('dwg', f);
+    fd.append('ver', el.ver.value);
+    const res = await fetch('/tools/dwg2dxf.php', { method:'POST', body: fd });
+    const json = await res.json();
+    if (!json.ok){ throw new Error(json.error||'Conversion failed'); }
+    // fetch the DXF and render
+    const txt = await fetch(json.url, { cache:'no-store' }).then(r=>r.text());
+    const parser = new DxfParser();
+    const dxf = parser.parseSync(txt);
+    buildSceneFromDXF(dxf);
+  }catch(err){
+    console.error(err);
+    alert('DWG conversion failed: ' + err.message);
+  }finally{
+    el.convert.disabled = false; el.convert.textContent = 'Open DWG';
+  }
+};
+
+/* ===== Export current view to a single-page PDF (client-side) ===== */
+el.exportPdf.onclick = async ()=>{
+  // Grab WebGL canvas as PNG at current pixel size
+  const cvs = renderer.domElement;
+  const dataURL = cvs.toDataURL('image/png'); // needs preserveDrawingBuffer:true
+  const pngBytes = await (await fetch(dataURL)).arrayBuffer();
+
+  // Choose page size (A4 landscape by default)
+  const A4 = { w: 841.89, h: 595.28 }; // points (1/72")
+  const margin = 20; // pt
+  const pdf = await PDFLib.PDFDocument.create();
+  const page = pdf.addPage([A4.w, A4.h]);
+
+  const png = await pdf.embedPng(pngBytes);
+  // fit: contain into page - margins
+  const maxW = A4.w - margin*2;
+  const maxH = A4.h - margin*2;
+  const scale = Math.min(maxW/png.width, maxH/png.height);
+  const drawW = png.width * scale;
+  const drawH = png.height * scale;
+  const x = (A4.w - drawW)/2;
+  const y = (A4.h - drawH)/2;
+
+  page.drawImage(png, { x, y, width: drawW, height: drawH });
+
+  const bytes = await pdf.save();
+  const blob = new Blob([bytes], { type:'application/pdf' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'view.pdf';
+  a.click();
+};
+
+/* ===== Auto-open ?src=DXF_URL (optional deep link) ===== */
+(function(){
+  const params = new URLSearchParams(location.search);
+  const src = params.get('src');
+  if (!src) return;
+  fetch(src, { cache:'no-store' })
+    .then(r=>r.text())
+    .then(txt=>{
+      const parser = new DxfParser();
+      const dxf = parser.parseSync(txt);
+      buildSceneFromDXF(dxf);
+    })
+    .catch(err=>alert('Failed to load DXF: '+err));
+})();
+</script>
+</body>
+</html>

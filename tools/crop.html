@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Crop PDF — stable rollback</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/assets/ui.css">
+
+  <style>
+    :root{ --bg:#0b1220; --text:#e5e7eb; --border:#1f2937; --muted:#94a3b8; }
+    html,body{ margin:0; background:var(--bg); color:var(--text);
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,'Helvetica Neue',Arial,sans-serif;}
+    .wrap{ max-width:1100px; margin:20px auto; padding:0 14px; }
+    .panel{ display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+      padding:8px; background:linear-gradient(180deg,#111827,#0f172a);
+      border:1px solid var(--border); border-radius:12px; margin-bottom:10px; }
+    .panel .sp{ flex:1 }
+    #viewer{ border:1px solid var(--border); border-radius:12px; background:#0e0e0e; padding:8px; }
+    #scroller{ position:relative; overflow:auto; height:76vh; background:#111; border-radius:8px; }
+    #layer{ position:relative; width:max-content; height:max-content; }
+    #pdfCanvas{ display:block; background:#fff; border-radius:8px; }
+    #ov{ position:absolute; left:0; top:0; pointer-events:none; }
+    .kbd{ padding:0 6px; border:1px solid var(--border); border-radius:6px; background:#0f172a; color:#cbd5e1; }
+    .muted{ color:var(--muted); font-size:12px; margin-top:8px; }
+  </style>
+</head>
+<body>
+<header class="topnav">
+  <div class="brand">PDF Editor — Crop (stable)</div>
+  <nav>
+    <a href="/index.html">Editor</a>
+    <a href="/tools/convert.html">Convert</a>
+    <a href="/export.html">Exports</a>
+    <a href="/help.html">Help</a>
+  </nav>
+</header>
+
+<div class="wrap">
+  <div class="panel">
+    <input id="file" type="file" accept="application/pdf" />
+    <div class="btn-group">
+      <button id="prev">◀</button>
+      <span id="page" class="chip mini">—</span>
+      <button id="next">▶</button>
+    </div>
+    <div class="btn-group">
+      <button id="zout">−</button>
+      <span id="zoom" class="chip mini">100%</span>
+      <button id="zin">+</button>
+    </div>
+    <button id="zreset">Reset</button>
+
+    <span class="sp"></span>
+
+    <button id="setCrop">Apply CropBox (page)</button>
+    <button id="setCropAll">Apply CropBox (all)</button>
+    <button id="resetCrop">Reset Crop (page)</button>
+
+    <span class="sp"></span>
+
+    <button id="hardCrop">Hard Crop (raster, page)</button>
+    <button id="hardCropAll">Hard Crop (raster, all)</button>
+  </div>
+
+  <div id="viewer">
+    <div id="scroller">
+      <div id="layer">
+        <canvas id="pdfCanvas"></canvas>
+        <canvas id="ov"></canvas>
+      </div>
+    </div>
+    <div class="muted">
+      Drag to create a crop area. Then drag its <b>edges/corners to resize</b>, drag inside to move,
+      or use <b>Arrows</b> to nudge and <b>Alt+Arrows</b> to resize (<b>Shift</b>=10px step).
+      Hold <span class="kbd">Space</span> to pan. Ctrl+Wheel to zoom.
+      <br/>CropBox hides outside content (non-destructive). “Hard Crop (raster)” always works by snapshotting the selected area.
+    </div>
+  </div>
+</div>
+
+<!-- PDF.js -->
+<script src="/vendor/pdf.min.js"></script>
+<script>pdfjsLib.GlobalWorkerOptions.workerSrc="/vendor/pdf.worker.min.js";</script>
+
+<!-- pdf-lib (fix path here) -->
+<script src="/vendor/pdf-lib.min.js?v=20250918"></script>
+<script>
+  // optional safety fallback
+  if (!window.PDFLib) {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js';
+    document.head.appendChild(s);
+  }
+</script>
+
+
+<script>
+/* ---------- helpers / state ---------- */
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const dpr = ()=>Math.max(1, window.devicePixelRatio||1);
+
+const el = {
+  file: document.getElementById('file'),
+  prev: document.getElementById('prev'), next: document.getElementById('next'), page: document.getElementById('page'),
+  zin: document.getElementById('zin'), zout: document.getElementById('zout'), zreset: document.getElementById('zreset'), zoom: document.getElementById('zoom'),
+  pdf: document.getElementById('pdfCanvas'), ov: document.getElementById('ov'),
+  scroller: document.getElementById('scroller'),
+  setCrop: document.getElementById('setCrop'), setCropAll: document.getElementById('setCropAll'), resetCrop: document.getElementById('resetCrop'),
+  hardCrop: document.getElementById('hardCrop'), hardCropAll: document.getElementById('hardCropAll'),
+};
+const ctx = el.pdf.getContext('2d'), ovx = el.ov.getContext('2d');
+
+let pdfBuf=null, pdfView=null, pdfWrite=null;
+let pageIndex=0, pageCount=0, zoom=1, viewport=null;
+let renderTask = null; // active PDF.js render (for cancellation)
+let cropCss=null;      // {x,y,w,h} in CSS px
+const HANDLE=10;       // handle size (CSS px)
+
+/* ---------- sizing/render ---------- */
+function updateSizes(w,h){
+  el.pdf.width = w; el.pdf.height = h;
+  el.pdf.style.width = (w/dpr())+'px';
+  el.pdf.style.height = (h/dpr())+'px';
+  el.ov.width = w; el.ov.height = h;
+  el.ov.style.width = el.pdf.style.width;
+  el.ov.style.height = el.pdf.style.height;
+}
+
+async function loadPdf(buf){
+  pdfBuf = buf;
+  pdfWrite = await PDFLib.PDFDocument.load(buf);
+  pdfView  = await pdfjsLib.getDocument({data:buf}).promise;
+  pageCount = pdfView.numPages; pageIndex = clamp(pageIndex,0,pageCount-1);
+  cropCss = null;
+  await render(true);
+}
+
+async function render(resetZ=false){
+  if (!pdfView) return;
+  const page = await pdfView.getPage(pageIndex+1);
+  const base = page.getViewport({scale:1}); // default rotation (page's own)
+  if (resetZ) zoom = 1;
+  const maxW = Math.min(1000, el.scroller.clientWidth-24 || 1000);
+  viewport = page.getViewport({ scale: (maxW / base.width) * zoom * dpr() });
+
+  updateSizes(Math.floor(viewport.width), Math.floor(viewport.height));
+  ovx.clearRect(0,0,el.ov.width, el.ov.height);
+
+  // cancel any previous render to avoid “same canvas” error
+  if (renderTask) {
+    try { renderTask.cancel(); } catch(_) {}
+    try { await renderTask.promise; } catch(_) {}
+    renderTask = null;
+  }
+
+  renderTask = page.render({ canvasContext: ctx, viewport });
+  try { await renderTask.promise; } catch (err) {
+    if (!(err && /Rendering cancelled/i.test(String(err)))) console.error(err);
+  } finally { renderTask = null; }
+
+  el.page.textContent = `Page ${pageIndex+1} / ${pageCount}`;
+  el.zoom.textContent = Math.round(zoom*100)+'%';
+  drawCrop();
+}
+
+/* ---------- conversions ---------- */
+function cssToPdf(pt){
+  const [x,y] = viewport.convertToPdfPoint(pt.x*dpr(), pt.y*dpr());
+  return { x, y };
+}
+function cssRectToPdf(r){
+  // tl CSS -> PDF; br CSS -> PDF; account for PDF Y-up
+  const tl = cssToPdf({x:r.x, y:r.y});
+  const br = cssToPdf({x:r.x+r.w, y:r.y+r.h});
+  return { x:tl.x, y:br.y, w:br.x-tl.x, h:tl.y-br.y };
+}
+
+/* ---------- crop drawing ---------- */
+function toDev(r){ return { x:Math.round(r.x*dpr()), y:Math.round(r.y*dpr()), w:Math.round(r.w*dpr()), h:Math.round(r.h*dpr()) }; }
+function handlePoints(r){
+  const x1=r.x, y1=r.y, x2=r.x+r.w, y2=r.y+r.h, xm=(x1+x2)/2, ym=(y1+y2)/2;
+  return [
+    {n:'nw',x:x1,y:y1},{n:'n',x:xm,y:y1},{n:'ne',x:x2,y:y1},
+    {n:'e',x:x2,y:ym},{n:'se',x:x2,y:y2},{n:'s',x:xm,y:y2},
+    {n:'sw',x:x1,y:y2},{n:'w',x:x1,y:ym}
+  ];
+}
+function hitHandle(cssX, cssY, r){
+  if (!r) return null;
+  const pts = handlePoints(r);
+  for (const p of pts){ if (Math.abs(cssX-p.x)<=HANDLE && Math.abs(cssY-p.y)<=HANDLE) return p.n; }
+  return null;
+}
+function drawCrop(){
+  ovx.clearRect(0,0,el.ov.width, el.ov.height);
+  if (!cropCss) return;
+  const r = toDev(cropCss);
+  ovx.lineWidth = 2*dpr();
+  ovx.setLineDash([6*dpr(),4*dpr()]);
+  ovx.strokeStyle = "rgba(59,130,246,0.9)";
+  ovx.strokeRect(r.x,r.y,r.w,r.h);
+  ovx.fillStyle = "rgba(59,130,246,0.12)";
+  ovx.fillRect(r.x,r.y,r.w,r.h);
+  ovx.setLineDash([]);
+  const pts = handlePoints({x:r.x,y:r.y,w:r.w,h:r.h});
+  const hs = HANDLE*dpr();
+  ovx.fillStyle = "#fff";
+  ovx.strokeStyle = "rgba(59,130,246,1)";
+  for (const p of pts){
+    ovx.fillRect(p.x-hs/2, p.y-hs/2, hs, hs);
+    ovx.strokeRect(p.x-hs/2, p.y-hs/2, hs, hs);
+  }
+}
+
+/* ---------- crop helpers ---------- */
+function normalizeCssRect(a,b){
+  const x1=Math.min(a.x,b.x), y1=Math.min(a.y,b.y), x2=Math.max(a.x,b.x), y2=Math.max(a.y,b.y);
+  return {x:x1,y:y1,w:x2-x1,h:y2-y1};
+}
+function clampRectToCanvas(r){
+  const rect = el.pdf.getBoundingClientRect();
+  const W = rect.width, H = rect.height;
+  const out={...r};
+  out.x = clamp(out.x,0,W); out.y = clamp(out.y,0,H);
+  out.w = Math.max(1, Math.min(out.w, W - out.x));
+  out.h = Math.max(1, Math.min(out.h, H - out.y));
+  if (![out.x,out.y,out.w,out.h].every(Number.isFinite)) return null;
+  return out;
+}
+function currentSelectionPdfRect(){
+  if (!cropCss) return null;
+  const safe = clampRectToCanvas(cropCss); if (!safe) return null;
+  return cssRectToPdf(safe);
+}
+
+/* ---------- mouse (create/move/resize) ---------- */
+let action=null;  // 'new' | 'move' | 'resize' | null
+let start=null;   // CSS {x,y}
+let startRect=null;
+let handleName=null;
+let panning=false, panStart=null, scrollStart=null, space=false;
+
+el.scroller.addEventListener('mousedown', (e)=>{
+  const rect = el.pdf.getBoundingClientRect();
+  const inside = e.clientX>=rect.left && e.clientX<=rect.right && e.clientY>=rect.top && e.clientY<=rect.bottom;
+  if (!inside) return;
+
+  if (space){
+    panning=true; panStart={x:e.clientX,y:e.clientY}; scrollStart={x:el.scroller.scrollLeft,y:el.scroller.scrollTop}; return;
+  }
+
+  const css = { x:e.clientX-rect.left, y:e.clientY-rect.top };
+  const overHandle = cropCss ? hitHandle(css.x, css.y, cropCss) : null;
+
+  if (overHandle){ action='resize'; handleName=overHandle; start=css; startRect={...cropCss}; }
+  else if (cropCss &&
+           css.x>=cropCss.x && css.x<=cropCss.x+cropCss.w &&
+           css.y>=cropCss.y && css.y<=cropCss.y+cropCss.h){
+    action='move'; start=css; startRect={...cropCss};
+  } else {
+    action='new'; start=css; cropCss={x:css.x,y:css.y,w:1,h:1};
+  }
+  drawCrop();
+});
+
+window.addEventListener('mousemove',(e)=>{
+  if (panning){ el.scroller.scrollLeft = scrollStart.x-(e.clientX-panStart.x); el.scroller.scrollTop = scrollStart.y-(e.clientY-panStart.y); return; }
+  if (!action) return;
+
+  const rect = el.pdf.getBoundingClientRect();
+  const css = { x: clamp(e.clientX-rect.left,0,rect.width),
+                y: clamp(e.clientY-rect.top, 0,rect.height) };
+
+  if (action==='new'){
+    cropCss = normalizeCssRect(start, css);
+  } else if (action==='move'){
+    const dx = css.x - start.x, dy = css.y - start.y;
+    cropCss = clampRectToCanvas({ x:startRect.x+dx, y:startRect.y+dy, w:startRect.w, h:startRect.h });
+  } else if (action==='resize'){
+    const r = {...startRect};
+    const dx = css.x - start.x, dy = css.y - start.y;
+    switch(handleName){
+      case 'nw': r.x+=dx; r.y+=dy; r.w-=dx; r.h-=dy; break;
+      case 'n':  r.y+=dy; r.h-=dy; break;
+      case 'ne': r.y+=dy; r.w+=dx; r.h-=dy; break;
+      case 'e':  r.w+=dx; break;
+      case 'se': r.w+=dx; r.h+=dy; break;
+      case 's':  r.h+=dy; break;
+      case 'sw': r.x+=dx; r.w-=dx; r.h+=dy; break;
+      case 'w':  r.x+=dx; r.w-=dx; break;
+    }
+    r.w = Math.max(1, r.w); r.h = Math.max(1, r.h);
+    cropCss = clampRectToCanvas(r);
+  }
+  drawCrop();
+});
+window.addEventListener('mouseup',()=>{ if (panning){panning=false;} action=null; });
+window.addEventListener('keydown',(e)=>{ if (e.code==='Space'){ space=true; e.preventDefault(); }});
+window.addEventListener('keyup',(e)=>{ if (e.code==='Space'){ space=false; }});
+
+/* Arrow keys: move; Alt+Arrows: resize; Shift=10px step */
+window.addEventListener('keydown', (e)=>{
+  if (!cropCss) return;
+  const tag = (document.activeElement && document.activeElement.tagName) || '';
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+
+  const step = e.shiftKey ? 10 : 1;
+  let changed = false;
+
+  if (!e.altKey) {
+    if (e.key === 'ArrowLeft')  { cropCss.x -= step; changed = true; }
+    if (e.key === 'ArrowRight') { cropCss.x += step; changed = true; }
+    if (e.key === 'ArrowUp')    { cropCss.y -= step; changed = true; }
+    if (e.key === 'ArrowDown')  { cropCss.y += step; changed = true; }
+  } else {
+    if (e.key === 'ArrowLeft')  { cropCss.w -= step; changed = true; }
+    if (e.key === 'ArrowRight') { cropCss.w += step; changed = true; }
+    if (e.key === 'ArrowUp')    { cropCss.h -= step; changed = true; }
+    if (e.key === 'ArrowDown')  { cropCss.h += step; changed = true; }
+  }
+
+  if (changed) {
+    cropCss = clampRectToCanvas(cropCss);
+    drawCrop();
+    e.preventDefault();
+  }
+});
+
+/* ---------- zoom ---------- */
+const MIN_Z=0.1, MAX_Z=8, ZF=1.12;
+el.zin.onclick = async ()=>{ zoom=clamp(zoom*ZF,MIN_Z,MAX_Z); await render(); };
+el.zout.onclick= async ()=>{ zoom=clamp(zoom/ZF,MIN_Z,MAX_Z); await render(); };
+el.zreset.onclick= async ()=>{ zoom=1; await render(true); };
+el.scroller.addEventListener('wheel', (e)=>{
+  if (!e.ctrlKey) return;
+  e.preventDefault();
+  (async ()=>{
+    const rect = el.pdf.getBoundingClientRect();
+    const old=zoom;
+    const mx=(e.clientX-rect.left)+el.scroller.scrollLeft;
+    const my=(e.clientY-rect.top)+el.scroller.scrollTop;
+    zoom=clamp(zoom*(e.deltaY<0?ZF:1/ZF),MIN_Z,MAX_Z);
+    const ratio=zoom/old;
+    await render();
+    el.scroller.scrollLeft=Math.max(0,(mx*ratio)-(e.clientX-rect.left));
+    el.scroller.scrollTop =Math.max(0,(my*ratio)-(e.clientY-rect.top));
+  })();
+}, {passive:false});
+
+window.addEventListener('resize', ()=>{ if (pdfView) render(false); });
+
+/* ---------- Apply CropBox (non-destructive) ---------- */
+async function applyCropBox(allPages=false){
+  if (!pdfWrite || !cropCss || !viewport){
+    alert('Open a PDF and draw a crop area first');
+    return;
+  }
+  const MIN_PTS = 0.5; // tiny but non-zero
+  const pages = allPages ? [...Array(pdfWrite.getPageCount()).keys()] : [pageIndex];
+
+  // If applying to all pages, capture normalized rectangle from current page
+  let norm=null;
+  if (allPages){
+    const r = currentSelectionPdfRect(); if (!r){ alert('Invalid selection'); return; }
+    const pg0 = pdfWrite.getPage(pageIndex);
+    const w0 = pg0.getWidth(), h0 = pg0.getHeight();
+    norm = { x:r.x/w0, y:r.y/h0, w:r.w/w0, h:r.h/h0 };
+  }
+
+  for (const i of pages){
+    try{
+      const pg = pdfWrite.getPage(i);
+      const w = pg.getWidth(), h = pg.getHeight();
+      let left,bottom,right,top;
+
+      if (!allPages){
+        const r = currentSelectionPdfRect(); if (!r){ continue; }
+        left   = clamp(r.x,        0,      w - MIN_PTS);
+        bottom = clamp(r.y,        0,      h - MIN_PTS);
+        right  = clamp(r.x+r.w, left+MIN_PTS, w);
+        top    = clamp(r.y+r.h, bottom+MIN_PTS, h);
+      } else {
+        left   = clamp(norm.x*w,        0,      w - MIN_PTS);
+        bottom = clamp(norm.y*h,        0,      h - MIN_PTS);
+        right  = clamp(left+norm.w*w, left+MIN_PTS, w);
+        top    = clamp(bottom+norm.h*h, bottom+MIN_PTS, h);
+      }
+
+      const box = { x:left, y:bottom, width:right-left, height:top-bottom };
+      if (![box.x,box.y,box.width,box.height].every(Number.isFinite)) continue;
+      pg.setCropBox(box);
+    }catch(err){ console.warn('setCropBox failed on page', i+1, err); }
+  }
+
+  const bytes = await pdfWrite.save();
+  const blob = new Blob([bytes], { type:'application/pdf' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = allPages ? 'cropped_all.pdf' : 'cropped.pdf';
+  a.click();
+}
+
+/* ---------- Hard Crop (RASTER snapshot) ---------- */
+async function hardCrop(allPages=false){
+  if (!pdfView || !pdfWrite || !cropCss){ alert('Open a PDF and select an area'); return; }
+
+  const out = await PDFLib.PDFDocument.create();
+  const pages = allPages ? [...Array(pdfView.numPages).keys()] : [pageIndex];
+
+  for (const i of pages){
+    const page = await pdfView.getPage(i+1);
+    // Render at higher scale for better quality
+    const scale = 2 * dpr(); // 2x retina-ish
+    const base = page.getViewport({scale:1});
+    const vp   = page.getViewport({scale: scale});
+    const off = document.createElement('canvas');
+    off.width = Math.floor(vp.width);
+    off.height= Math.floor(vp.height);
+    const offCtx = off.getContext('2d', { alpha:false });
+    await page.render({ canvasContext: offCtx, viewport: vp }).promise;
+
+    // Compute crop rect in *this* viewport scale
+    let rCss = cropCss;
+    // map CSS (onscreen) -> device px of the main canvas
+    const mainScale = viewport.scale / dpr(); // CSS px per PDF point? We simplify by ratio of scales:
+    // Safer: recompute from points to this vp
+    const rPdf = currentSelectionPdfRect(); // selection in PDF points
+    const tl = vp.convertToViewportPoint(rPdf.x, rPdf.y + rPdf.h); // PDF -> device
+    const br = vp.convertToViewportPoint(rPdf.x + rPdf.w, rPdf.y);
+    const dev = { x: Math.round(tl[0]), y: Math.round(tl[1]),
+                  w: Math.round(br[0]-tl[0]), h: Math.round(br[1]-tl[1]) };
+
+    // Extract that rectangle to a new canvas
+    const cut = document.createElement('canvas');
+    cut.width = Math.max(1, dev.w);
+    cut.height= Math.max(1, dev.h);
+    const cutCtx = cut.getContext('2d', { alpha:false });
+    cutCtx.drawImage(off, dev.x, dev.y, dev.w, dev.h, 0, 0, dev.w, dev.h);
+
+    // Embed into PDF page (1 px = 1 pt mapping scaled to fit)
+    const pngBytes = await new Promise(res=>cut.toBlob(b=>b.arrayBuffer().then(res), 'image/png'));
+    const png = await out.embedPng(pngBytes);
+
+    const pagePtW = png.width * (72/96);  // heuristic if offscreen is 96dpi; keeps decent size
+    const pagePtH = png.height* (72/96);
+    const p = out.addPage([pagePtW, pagePtH]);
+    p.drawImage(png, { x:0, y:0, width:pagePtW, height:pagePtH });
+  }
+
+  const bytes = await out.save();
+  const blob = new Blob([bytes],{type:'application/pdf'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download = allPages ? 'hardcrop_all.pdf' : 'hardcrop.pdf';
+  a.click();
+}
+
+/* ---------- UI wiring ---------- */
+el.file.onchange = async (e)=>{ const f=e.target.files?.[0]; if(!f) return; await loadPdf(await f.arrayBuffer()); };
+el.prev.onclick = async ()=>{ if (!pdfView) return; pageIndex = clamp(pageIndex-1,0,pageCount-1); cropCss=null; await render(true); };
+el.next.onclick = async ()=>{ if (!pdfView) return; pageIndex = clamp(pageIndex+1,0,pageCount-1); cropCss=null; await render(true); };
+el.setCrop.onclick = ()=>applyCropBox(false);
+el.setCropAll.onclick = ()=>applyCropBox(true);
+el.resetCrop.onclick = async ()=>{
+  if (!pdfWrite){ alert('Open a PDF'); return; }
+  const pg = pdfWrite.getPage(pageIndex);
+  pg.setCropBox({x:0,y:0,width:pg.getWidth(),height:pg.getHeight()});
+  const bytes = await pdfWrite.save(); const blob = new Blob([bytes],{type:'application/pdf'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='crop_reset.pdf'; a.click();
+};
+el.hardCrop.onclick = ()=>hardCrop(false);
+el.hardCropAll.onclick = ()=>hardCrop(true);
+</script>
+</body>
+</html>

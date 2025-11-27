@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Convert PDF</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/assets/ui.css" />
+  <style>
+    :root{ --bg:#0b1220; --text:#e5e7eb; --muted:#94a3b8; --border:#1f2937; }
+    html,body{ margin:0; background:var(--bg); color:var(--text); font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif; }
+    .wrap{ max-width:1000px; margin:24px auto; padding:0 16px; }
+    .grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px; }
+    .card{ background:#0f172a; border:1px solid var(--border); border-radius:14px; padding:14px; }
+    .card h3{ margin:0 0 8px; }
+    .muted{ color:var(--muted); font-size:13px; }
+    .row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:10px; }
+    .preview{ margin-top:16px; border:1px dashed var(--border); border-radius:12px; padding:12px; }
+    canvas{ max-width:100%; background:#111; border-radius:8px; }
+  </style>
+</head>
+<body>
+<header class="topnav">
+  <div class="brand">PDF Editor — Convert</div>
+  <nav>
+    <a href="/index.html">Editor</a>
+    <a href="/tools/crop.html">Crop</a>
+    <a href="/export.html">Exports</a>
+    <a href="/help.html">Help</a>
+  </nav>
+</header>
+
+<div class="wrap">
+  <div class="grid">
+
+    <div class="card">
+      <h3>PDF → PNG / JPEG</h3>
+      <p class="muted">Render each page to images. (Optional ZIP if JSZip is available.)</p>
+      <div class="row">
+        <input id="img_pdf" type="file" accept="application/pdf">
+        <label>DPI <input id="img_dpi" type="number" min="72" max="600" step="12" value="144" style="width:80px"></label>
+        <select id="img_fmt"><option>png</option><option>jpeg</option></select>
+        <button id="img_go">Convert</button>
+      </div>
+      <div id="img_out" class="preview"></div>
+    </div>
+
+    <div class="card">
+      <h3>PDF → TXT / JSON / HTML</h3>
+      <p class="muted">Extract text runs with bounding boxes (via PDF.js).</p>
+      <div class="row">
+        <input id="txt_pdf" type="file" accept="application/pdf">
+        <select id="txt_fmt"><option>txt</option><option>json</option><option>html</option></select>
+        <button id="txt_go">Extract</button>
+      </div>
+      <div id="txt_out" class="preview"></div>
+    </div>
+
+    <div class="card">
+      <h3>Image(s) → PDF</h3>
+      <p class="muted">Create a PDF with one page per image.</p>
+      <div class="row">
+        <input id="ipdf_files" type="file" accept="image/*" multiple>
+        <button id="ipdf_go">Make PDF</button>
+      </div>
+      <div id="ipdf_out" class="preview"></div>
+    </div>
+
+    <div class="card">
+      <h3>TXT → PDF</h3>
+      <p class="muted">Simple monospaced text into A4 portrait pages.</p>
+      <div class="row">
+        <textarea id="tpdf_text" rows="6" style="width:100%; background:#0b1220; color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px" placeholder="Paste or type text…"></textarea>
+        <div class="row">
+          <label>Font size <input id="tpdf_size" type="number" min="8" max="20" value="11" style="width:70px"></label>
+          <button id="tpdf_go">Make PDF</button>
+        </div>
+      </div>
+      <div id="tpdf_out" class="preview"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Optional JSZip (self-host if you prefer): /vendor/jszip.min.js -->
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+
+<!-- PDF.js + worker (self-hosted) -->
+<script src="/vendor/pdf.min.js"></script>
+<script> pdfjsLib.GlobalWorkerOptions.workerSrc = "/vendor/pdf.worker.min.js"; </script>
+<!-- pdf-lib -->
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+
+<script>
+const dpr=()=>Math.max(1,window.devicePixelRatio||1);
+
+/* ---------- PDF → images ---------- */
+const img_go = document.getElementById('img_go');
+img_go.onclick = async ()=>{
+  const f = document.getElementById('img_pdf').files?.[0];
+  if(!f) return alert('Choose a PDF');
+  const dpi = parseInt(document.getElementById('img_dpi').value||'144',10);
+  const fmt = document.getElementById('img_fmt').value; // png/jpeg
+  const out = document.getElementById('img_out'); out.innerHTML='';
+
+  const pdf = await pdfjsLib.getDocument({data: await f.arrayBuffer()}).promise;
+  const links = [];
+  for (let i=1;i<=pdf.numPages;i++){
+    const page = await pdf.getPage(i);
+    const scale = dpi/72 * dpr();
+    const vp = page.getViewport({scale});
+    const can = document.createElement('canvas'); const ctx=can.getContext('2d');
+    can.width = Math.floor(vp.width); can.height = Math.floor(vp.height);
+    await page.render({canvasContext:ctx, viewport:vp}).promise;
+    const url = can.toDataURL('image/'+fmt);
+    const a = document.createElement('a'); a.textContent = `Page ${i}.${fmt}`; a.href=url; a.download=`page-${i}.${fmt}`;
+    const p = document.createElement('p'); p.appendChild(a); out.appendChild(p);
+    links.push({name:`page-${i}.${fmt}`, url});
+  }
+
+  if (window.JSZip){
+    const zip = new JSZip();
+    for (const l of links){
+      const ab = await fetch(l.url).then(r=>r.arrayBuffer());
+      zip.file(l.name, ab);
+    }
+    const blob = await zip.generateAsync({type:'blob'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='pages.zip'; a.textContent='Download ZIP';
+    out.appendChild(a);
+  }
+};
+
+/* ---------- PDF → TXT/JSON/HTML ---------- */
+document.getElementById('txt_go').onclick = async ()=>{
+  const f = document.getElementById('txt_pdf').files?.[0];
+  if(!f) return alert('Choose a PDF');
+  const fmt = document.getElementById('txt_fmt').value;
+  const out = document.getElementById('txt_out'); out.innerHTML='';
+
+  const pdf = await pdfjsLib.getDocument({data: await f.arrayBuffer()}).promise;
+  const pages=[];
+  for (let i=1;i<=pdf.numPages;i++){
+    const page = await pdf.getPage(i);
+    const tc = await page.getTextContent();
+    const runs = tc.items.map(it=>({ text: it.str, width: it.width, height: it.height, transform: it.transform }));
+    pages.push({page:i, runs});
+  }
+
+  if (fmt==='json'){
+    const blob = new Blob([JSON.stringify({pages},null,2)], {type:'application/json'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='text.json'; a.textContent='Download JSON';
+    out.appendChild(a);
+  } else if (fmt==='txt'){
+    const txt = pages.map(p=>p.runs.map(r=>r.text).join(' ')).join('\n\n--- Page break ---\n\n');
+    const blob = new Blob([txt], {type:'text/plain'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='text.txt'; a.textContent='Download TXT';
+    out.appendChild(a);
+  } else {
+    // simple flow HTML
+    const html = ['<!doctype html><meta charset="utf-8"><title>Extracted Text</title><body>'];
+    for (const p of pages){ html.push(`<h3>Page ${p.page}</h3><p>${p.runs.map(r=>r.text).join(' ')}</p>`); }
+    html.push('</body>');
+    const blob = new Blob([html.join('\n')], {type:'text/html'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='text.html'; a.textContent='Download HTML';
+    out.appendChild(a);
+  }
+};
+
+/* ---------- Images → PDF ---------- */
+document.getElementById('ipdf_go').onclick = async ()=>{
+  const files = [...(document.getElementById('ipdf_files').files||[])];
+  if(!files.length) return alert('Choose images');
+  const doc = await PDFLib.PDFDocument.create();
+  for (const f of files){
+    const buf = await f.arrayBuffer();
+    const isPng = f.type.includes('png');
+    const img = isPng ? await doc.embedPng(buf) : await doc.embedJpg(buf);
+    const w = img.width, h = img.height;
+    const page = doc.addPage([w*72/96, h*72/96]); // assume ~96 CSS dpi -> 72pt
+    page.drawImage(img, {x:0,y:0, width:page.getWidth(), height:page.getHeight()});
+  }
+  const bytes = await doc.save();
+  const blob=new Blob([bytes],{type:'application/pdf'});
+  const out=document.getElementById('ipdf_out'); out.innerHTML='';
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='images.pdf'; a.textContent='Download PDF';
+  out.appendChild(a);
+};
+
+/* ---------- TXT → PDF ---------- */
+document.getElementById('tpdf_go').onclick = async ()=>{
+  const text = document.getElementById('tpdf_text').value||'';
+  const size = parseInt(document.getElementById('tpdf_size').value||'11',10);
+  const doc = await PDFLib.PDFDocument.create();
+  const font = await doc.embedFont(PDFLib.StandardFonts.Courier);
+  const margin = 40, lineH = size*1.25;
+  const pageSize=[595.28,841.89]; // A4 pt
+  let page = doc.addPage(pageSize);
+  let x=margin, y=page.getHeight()-margin;
+
+  const words = text.split(/\s+/);
+  let line='';
+  function flush(){ page.drawText(line, {x, y: y-lineH, size, font}); y -= lineH; line=''; if (y < margin+lineH){ page = doc.addPage(pageSize); y=page.getHeight()-margin; } }
+  for (const w of words){
+    const cand = line ? (line+' '+w) : w;
+    if (font.widthOfTextAtSize(cand, size) > (page.getWidth()-margin*2)) flush();
+    line = line ? (line+' '+w) : w;
+  }
+  if (line) flush();
+
+  const bytes = await doc.save();
+  const blob=new Blob([bytes],{type:'application/pdf'});
+  const out=document.getElementById('tpdf_out'); out.innerHTML='';
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='text.pdf'; a.textContent='Download PDF';
+  out.appendChild(a);
+};
+</script>
+</body>
+</html>
