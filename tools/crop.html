@@ -85,6 +85,8 @@
 
 <!-- pdf-lib (fix path here) -->
 <script src="/vendor/pdf-lib.min.js?v=20250918"></script>
+<!-- Shared last-opened PDF store -->
+<script src="/assets/pdf-session.js"></script>
 <script>
   // optional safety fallback
   if (!window.PDFLib) {
@@ -134,6 +136,24 @@ async function loadPdf(buf){
   pageCount = pdfView.numPages; pageIndex = clamp(pageIndex,0,pageCount-1);
   cropCss = null;
   await render(true);
+}
+
+async function restoreLastPdf(){
+  if (!window.pdfSession || !pdfSession.load) return;
+  try{
+    const last = await pdfSession.load();
+    if (last && last.bytes){
+      await loadPdf(last.bytes);
+      if (last.name){
+        el.file.title = `Loaded: ${last.name}`;
+        // show the name beside the chooser for clarity
+        const label = el.file.nextElementSibling || el.file.parentElement;
+        if (label && label.tagName === 'LABEL') label.dataset.loadedName = last.name;
+      }
+    }
+  }catch(err){
+    console.warn('Restore previous PDF failed', err);
+  }
 }
 
 async function render(resetZ=false){
@@ -456,7 +476,12 @@ async function hardCrop(allPages=false){
 }
 
 /* ---------- UI wiring ---------- */
-el.file.onchange = async (e)=>{ const f=e.target.files?.[0]; if(!f) return; await loadPdf(await f.arrayBuffer()); };
+el.file.onchange = async (e)=>{
+  const f=e.target.files?.[0]; if(!f) return;
+  const buf = await f.arrayBuffer();
+  await loadPdf(buf);
+  if (window.pdfSession && pdfSession.save){ pdfSession.save(buf, f.name).catch(()=>{}); }
+};
 el.prev.onclick = async ()=>{ if (!pdfView) return; pageIndex = clamp(pageIndex-1,0,pageCount-1); cropCss=null; await render(true); };
 el.next.onclick = async ()=>{ if (!pdfView) return; pageIndex = clamp(pageIndex+1,0,pageCount-1); cropCss=null; await render(true); };
 el.setCrop.onclick = ()=>applyCropBox(false);
@@ -470,6 +495,9 @@ el.resetCrop.onclick = async ()=>{
 };
 el.hardCrop.onclick = ()=>hardCrop(false);
 el.hardCropAll.onclick = ()=>hardCrop(true);
+
+// Attempt to auto-load the last opened PDF (shared with main editor)
+restoreLastPdf();
 </script>
 </body>
 </html>

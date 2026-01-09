@@ -356,6 +356,8 @@
 
 <!-- pdf-lib (self-hosted) -->
 <script src="/vendor/pdf-lib.min.js"></script>
+<!-- Shared last-opened PDF store -->
+<script src="/assets/pdf-session.js"></script>
 
 <!-- App scripts -->
 <script>
@@ -1357,11 +1359,31 @@ async function handlePdfFile(file) {
     const buf = await file.arrayBuffer();
     edits = []; undoStack = []; redoStack = []; selectedIds = [];
     await loadBoth(buf);
+    if (window.pdfSession && pdfSession.save) {
+      pdfSession.save(buf, file.name).catch(err => console.warn('Persist current PDF failed', err));
+    }
     hideLoading();
   } catch (err) {
     hideLoading();
     console.error('Failed to load PDF:', err);
     showError('Failed to load PDF: ' + (err.message || 'Unknown error'));
+  }
+}
+
+async function tryRestoreLastPdf() {
+  if (!window.pdfSession || !pdfSession.load) return;
+  try {
+    const last = await pdfSession.load();
+    if (last && last.bytes) {
+      showLoading('Restoring PDF...');
+      edits = []; undoStack = []; redoStack = []; selectedIds = [];
+      await loadBoth(last.bytes);
+      if (last.name && el.file) el.file.title = `Loaded: ${last.name}`;
+      hideLoading();
+    }
+  } catch (err) {
+    hideLoading();
+    console.warn('Restore previous PDF failed', err);
   }
 }
 
@@ -1402,6 +1424,7 @@ el.snap.checked = settings.snap;
 el.gridSize.value = settings.grid;
 el.showGrid.checked = settings.showGrid;
 contextualizeUI();
+tryRestoreLastPdf();
 
 /* ====== Sidebar toggle for mobile ====== */
 const sidebarToggle = document.getElementById('sidebarToggle');
