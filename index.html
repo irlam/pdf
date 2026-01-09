@@ -745,7 +745,9 @@ el.scroller.addEventListener('mousedown', (ev)=>{
 
   const cssX = ev.clientX-rect.left, cssY = ev.clientY-rect.top;
   const hitId = hitItemAt(cssX, cssY);
-  const canPan = ev.button===0 && (spaceDown || (zoom>1 && !hitId && el.tool.value==='select' && !ev.shiftKey && !ev.altKey && !ev.ctrlKey));
+  const noModifiers = !ev.shiftKey && !ev.altKey && !ev.ctrlKey;
+  const canPanBlankZoom = zoom>1 && !hitId && el.tool.value==='select' && noModifiers;
+  const canPan = ev.button===0 && (spaceDown || canPanBlankZoom);
   if (canPan){
     panning = true; panStart = {x:ev.clientX,y:ev.clientY}; scrollStart = {x:el.scroller.scrollLeft, y:el.scroller.scrollTop};
     el.scroller.style.cursor = 'grabbing';
