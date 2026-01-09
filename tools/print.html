@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Print PDFs — PDF Editor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/assets/ui.css">
+  <style>
+    :root{ --bg:#0b1220; --text:#e5e7eb; --muted:#94a3b8; --border:#1f2937; }
+    html,body{ margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,'Helvetica Neue',Arial,sans-serif; }
+    .wrap{ max-width:900px; margin:24px auto; padding:0 16px; display:flex; flex-direction:column; gap:14px; }
+    .card{ background:#0f172a; border:1px solid var(--border); border-radius:14px; padding:16px; }
+    .card h2{ margin:0 0 8px; font-size:20px; }
+    .muted{ color:var(--muted); font-size:13px; }
+    .row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:10px; }
+    .file-list{ list-style:none; padding:0; margin:12px 0 0 0; }
+    .file-list li{
+      display:flex; align-items:center; gap:10px; padding:10px 12px;
+      background:#111827; border:1px solid var(--border); border-radius:10px; margin:6px 0;
+    }
+    .file-list .name{ flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .file-list .size{ color:var(--muted); font-size:12px; }
+    .empty-state{ text-align:center; padding:10px; color:var(--muted); }
+  </style>
+</head>
+<body>
+<header class="topnav">
+  <div class="brand">PDF Editor — Print</div>
+  <nav>
+    <a href="/index.html">Editor</a>
+    <a href="/tools/merge.html">Merge</a>
+    <a href="/tools/split.html">Split</a>
+    <a href="/tools/crop.html">Crop</a>
+    <a href="/tools/convert.html">Convert</a>
+    <a href="/tools/print.html">Print</a>
+    <a href="/tools/print.html#batch">Batch Print</a>
+    <a href="/export.html">Exports</a>
+    <a href="/help.html">Help</a>
+  </nav>
+</header>
+
+<div class="wrap">
+  <div class="card" id="single">
+    <h2>Print a PDF</h2>
+    <p class="muted">Load a PDF and open your browser’s print dialog.</p>
+    <div class="row">
+      <input type="file" id="printFile" accept="application/pdf">
+      <button id="printBtn" class="btn-primary" disabled>Print PDF</button>
+    </div>
+    <p class="muted" id="printStatus"></p>
+  </div>
+
+  <div class="card" id="batch">
+    <h2>Batch Print PDFs</h2>
+    <p class="muted">Combine multiple PDFs and send them as a single print job.</p>
+    <div class="row">
+      <input type="file" id="batchFiles" accept="application/pdf" multiple>
+      <button id="batchBtn" class="btn-primary" disabled>Merge &amp; Print</button>
+    </div>
+    <ul class="file-list" id="batchList">
+      <li class="empty-state">No files selected. Choose PDFs to batch print.</li>
+    </ul>
+    <p class="muted" id="batchStatus"></p>
+  </div>
+</div>
+
+<script src="/vendor/pdf-lib.min.js"></script>
+<script>
+const { PDFDocument } = PDFLib;
+
+const printFile = document.getElementById('printFile');
+const printBtn = document.getElementById('printBtn');
+const printStatus = document.getElementById('printStatus');
+
+const batchFiles = document.getElementById('batchFiles');
+const batchBtn = document.getElementById('batchBtn');
+const batchList = document.getElementById('batchList');
+const batchStatus = document.getElementById('batchStatus');
+
+function formatSize(bytes){
+  if (bytes == null) return '';
+  const units = ['B','KB','MB','GB'];
+  let size = bytes, idx = 0;
+  while (size >= 1024 && idx < units.length-1){ size /= 1024; idx++; }
+  return `${size.toFixed(size >= 10 || idx === 0 ? 0 : 1)} ${units[idx]}`;
+}
+
+function setStatus(el, msg){ el.textContent = msg || ''; }
+
+function renderBatchList(files){
+  batchList.innerHTML = '';
+  if (!files.length){
+    const li = document.createElement('li'); li.className='empty-state'; li.textContent='No files selected. Choose PDFs to batch print.'; batchList.appendChild(li);
+    return;
+  }
+  for (const f of files){
+    const li = document.createElement('li');
+    const name = document.createElement('span'); name.className='name'; name.textContent = f.name || 'PDF';
+    const size = document.createElement('span'); size.className='size'; size.textContent = formatSize(f.size);
+    li.appendChild(name); li.appendChild(size);
+    batchList.appendChild(li);
+  }
+}
+
+function sendToPrinter(bytes, statusEl){
+  return new Promise((resolve, reject)=>{
+    setStatus(statusEl, 'Preparing print preview…');
+    const blob = new Blob([bytes], {type:'application/pdf'});
+    const url = URL.createObjectURL(blob);
+    const iframe = document.createElement('iframe');
+    iframe.style.position='fixed';
+    iframe.style.right='0';
+    iframe.style.bottom='0';
+    iframe.style.width='0';
+    iframe.style.height='0';
+    iframe.style.border='0';
+    iframe.setAttribute('aria-hidden','true');
+
+    const cleanup = (message)=>{
+      URL.revokeObjectURL(url);
+      iframe.remove();
+      if (message) setStatus(statusEl, message);
+    };
+
+    iframe.onload = ()=>{
+      setStatus(statusEl, 'Opening print dialog…');
+      try{
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+        setTimeout(()=>{ cleanup('Ready — check your print dialog.'); resolve(); }, 300);
+      } catch(err){
+        cleanup('Unable to print this PDF.');
+        reject(err);
+      }
+    };
+    iframe.onerror = ()=>{
+      cleanup('Unable to load PDF for printing.');
+      reject(new Error('Print frame failed to load'));
+    };
+
+    document.body.appendChild(iframe);
+    iframe.src = url;
+  });
+}
+
+printFile.addEventListener('change', ()=>{
+  printBtn.disabled = !printFile.files?.length;
+  setStatus(printStatus, '');
+});
+
+printBtn.addEventListener('click', async()=>{
+  const file = printFile.files?.[0];
+  if (!file) return;
+  printBtn.disabled = true;
+  try{
+    await sendToPrinter(await file.arrayBuffer(), printStatus);
+  }catch(err){
+    setStatus(printStatus, 'Unable to print: ' + err.message);
+  }finally{
+    printBtn.disabled = false;
+  }
+});
+
+batchFiles.addEventListener('change', ()=>{
+  const files = Array.from(batchFiles.files || []);
+  renderBatchList(files);
+  batchBtn.disabled = !files.length;
+  setStatus(batchStatus, '');
+});
+
+batchBtn.addEventListener('click', async()=>{
+  const files = Array.from(batchFiles.files || []);
+  if (!files.length) return;
+  batchBtn.disabled = true;
+  try{
+    setStatus(batchStatus, 'Combining PDFs…');
+    const merged = await PDFDocument.create();
+    for (const f of files){
+      const src = await PDFDocument.load(await f.arrayBuffer());
+      const pages = await merged.copyPages(src, src.getPageIndices());
+      pages.forEach(p=>merged.addPage(p));
+    }
+    const bytes = await merged.save();
+    await sendToPrinter(bytes, batchStatus);
+  }catch(err){
+    setStatus(batchStatus, 'Unable to batch print: ' + err.message);
+  }finally{
+    batchBtn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>

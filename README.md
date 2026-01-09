@@ -25,6 +25,7 @@ This tool provides a comprehensive suite of PDF editing and manipulation feature
 - **Split** (`/tools/split.html`): Extract page ranges into separate PDF files
 - **Crop** (`/tools/crop.html`): Define crop regions (soft CropBox or hard raster crop)
 - **Convert** (`/tools/convert.html`): PDF↔image, PDF→text, images→PDF, text→PDF
+- **Print / Batch Print** (`/tools/print.html`): Print a single PDF or merge multiple PDFs into one print job
 - **DWG Viewer** (`/tools/dwg.html`): Open DWG files (with server-side DXF conversion), measure, and export to PDF
 - **Exports** (`/export.html`): Extract text as CSV/JSON, convert overlay annotations to SVG/DXF
 
