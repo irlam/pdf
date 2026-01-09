@@ -57,8 +57,8 @@
     .top-toolbar .drop-zone-input{ display:flex; align-items:center; gap:8px; }
     
     /* Viewer shell (maximized) */
-    #viewerShell{ flex:1; border:1px solid var(--border); border-radius:12px; background:#0e0e0e; padding:8px; position:relative; margin:8px; display:flex; flex-direction:column; }
-    #scroller{ flex:1; position:relative; overflow:auto; background:#111; border-radius:8px; }
+    #viewerShell{ flex:1; min-height:0; border:1px solid var(--border); border-radius:12px; background:#0e0e0e; padding:8px; position:relative; margin:8px; display:flex; flex-direction:column; }
+    #scroller{ flex:1; min-height:0; position:relative; overflow:auto; background:#111; border-radius:8px; }
     #pageLayer{ position:relative; width:max-content; height:max-content; margin:auto; }
     #pdfCanvas{ display:block; background:#fff; border-radius:8px; }
     #overlayCanvas{ position:absolute; left:0; top:0; pointer-events:none; }
