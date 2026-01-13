@@ -1,0 +1,252 @@
+# Copilot Agent Prompt: Turn irlam/pdf into an on-site Plan Survey / Snagging PWA (offline-capable)
+
+You are working in the repo: https://github.com/irlam/pdf (local working copy). The repo already contains:
+- index.html and export.html
+- folders: api/, app/, storage/, vendor/ (plus whatever is present in the repo)
+Goal: implement a practical construction plan survey tool for Android tablets:
+- Open a PDF plan, zoom/pan
+- Tap to drop a pin/marker
+- Add text notes + category + status
+- Attach photos (from camera) to a pin
+- Work offline on site (PWA installable) and sync when back online
+- Export a survey report PDF, and optionally export a flattened marked-up plan PDF
+
+IMPORTANT: deliver production-ready code and commit in small steps with clear messages. Keep it simple: no framework is required. Prefer vanilla JS + PHP endpoints; Bootstrap styling if already used.
+
+---
+
+## 1) Core UX requirements (must implement)
+### 1.1 Plan library
+- Allow user to upload and manage multiple plan PDFs (plans have versions/revisions).
+- Show a “Plans” page/list with:
+  - plan name, revision, upload date, file size
+  - open plan button
+- Persist plans in storage/ and metadata in DB (or a metadata JSON file if DB isn’t set up yet; DB preferred).
+
+### 1.2 PDF plan viewer
+- Render PDF pages with PDF.js (likely already present or can be added under vendor/).
+- Must support:
+  - pinch-zoom, pan, page navigation
+  - fast rendering on Android tablet
+- Overlay layer:
+  - a transparent HTML overlay above the canvas where pins are drawn
+  - pins remain correctly positioned while zooming/panning
+
+### 1.3 Pins / Annotations (snags / survey points)
+- On tap, place a pin at the tapped location. Immediately open an “Issue” side panel / modal:
+  - Title (short)
+  - Notes (long)
+  - Category (dropdown: Safety, Quality, Design, Access, MEP, Fire, Snag, Other)
+  - Status (dropdown: Open, In Progress, Closed)
+  - Priority (Low/Medium/High)
+  - Trade (optional text)
+  - Assigned to (optional)
+  - Due date (optional)
+- Each pin stores:
+  - plan_id
+  - page number
+  - x, y in PDF page coordinates OR normalized coordinates (0..1) that are resolution-independent
+  - created_at, updated_at, created_by (optional)
+- Pins are displayed as:
+  - numbered markers (S01, S02, …) or sequential numeric per plan/revision
+  - color/shape depends on status (Open/In Progress/Closed)
+- Provide:
+  - list view of issues for current plan (filter by status/category/priority)
+  - clicking an issue jumps to page and centers the pin
+
+### 1.4 Photo attachments
+- From within an issue:
+  - “Add photo” uses Android camera capture if available
+  - Show thumbnails
+  - Allow remove photo
+- IMPORTANT: compress images client-side before upload (Android photos are huge):
+  - target width 1600–2000px, JPEG quality ~0.75–0.85
+  - preserve EXIF orientation if possible
+- Upload photos to storage/ (subfolder per plan_id and issue_id).
+- Store photo metadata in DB.
+
+### 1.5 Autosave + reliability
+- All edits autosave (debounced).
+- If offline:
+  - store changes locally
+  - show offline indicator
+  - queue uploads and issue updates to sync later
+
+---
+
+## 2) Offline-first PWA requirements (must implement)
+Yes, this MUST be a PWA:
+- Add manifest.json (name, icons, start_url, display=standalone)
+- Add service worker:
+  - cache app shell (HTML/CSS/JS/icons)
+  - cache PDF.js assets
+  - cache plan PDFs when opened (so they’re available offline later)
+- Offline data storage:
+  - Use IndexedDB to store:
+    - plan metadata (at least plan list)
+    - issues JSON per plan
+    - a sync queue of pending operations (create/update/delete issue, photo upload)
+- Sync strategy:
+  - When online, process queue FIFO:
+    - POST issue changes to API
+    - Upload photos (multipart/form-data)
+    - Mark queue items complete on success
+- UX:
+  - show “Offline mode” banner
+  - show “Syncing…” status and “last synced” timestamp
+  - provide a manual “Sync now” button
+
+Implementation tip:
+- If no build tooling, implement a simple vanilla service worker.
+- If you add Workbox, keep it minimal and committed.
+
+---
+
+## 3) Export requirements (must implement Export A; Export B optional)
+### Export A: Survey report PDF (must implement)
+Generate a PDF report that includes:
+- Project/plan header (plan name, revision, date, author)
+- Table/list of issues with:
+  - Issue ID/number
+  - Page number
+  - Category, status, priority
+  - Title + Notes
+  - Photos (1–3 thumbnails per issue, paginate as needed)
+- Optional: include a small “pin context” image by rasterizing the current page region around the pin
+Output: downloadable PDF.
+
+Preferred implementation:
+- Server-side PHP generation (reliable with large PDFs), using an existing PDF lib in repo or add one via Composer if permitted.
+- Alternatively client-side pdf-lib is acceptable for the report (NOT for editing original plan PDF).
+
+### Export B: Flattened marked-up plan PDF (optional but desirable)
+Create a new PDF where pins and brief labels are burned onto the original plan pages.
+This is more complex. If implemented:
+- Keep it simple: pins + short labels only (e.g., “S12”)
+- Provide toggle: include/exclude closed issues
+
+---
+
+## 4) Backend API (PHP) + Storage (DB)
+Create or extend PHP endpoints under api/:
+
+Suggested endpoints:
+- POST api/upload_plan.php
+  - accepts PDF upload, stores in storage/plans/
+  - creates plan record (name, revision, filename, sha1, uploaded_at)
+- GET api/list_plans.php
+- GET api/get_plan.php?plan_id=...
+  - returns plan metadata + file URL
+- GET api/list_issues.php?plan_id=...
+- POST api/save_issue.php
+  - creates/updates issue; returns issue_id
+- POST api/delete_issue.php
+- POST api/upload_photo.php (multipart)
+  - requires plan_id + issue_id
+  - stores in storage/photos/{plan_id}/{issue_id}/...
+- POST api/delete_photo.php
+- POST api/export_report.php
+  - generates PDF and returns download URL
+
+Database:
+- Provide SQL migration file under /sql/ (or similar).
+Tables:
+1) plans
+   - id (PK), name, revision, file_path, uploaded_at, sha1
+2) issues
+   - id (PK), plan_id (FK), issue_no (int), page, x_norm, y_norm, title, notes, category, status, priority, trade, assigned_to, due_date, created_at, updated_at
+3) photos
+   - id (PK), issue_id (FK), plan_id (FK), file_path, thumb_path (optional), created_at
+
+If DB is not available in this repo, still implement the schema + a config sample (api/config.php) and keep a fallback JSON mode if needed (but DB preferred).
+
+Security:
+- Validate uploads:
+  - PDF mime/type and extension
+  - photo mime types
+  - max file sizes
+- Sanitize inputs.
+- Prevent directory traversal.
+- Use random filenames.
+
+---
+
+## 5) Coordinate mapping (critical)
+Pins must stay in the right place across zoom levels and different render sizes.
+
+Store coordinates as normalized:
+- x_norm = x / page_width
+- y_norm = y / page_height
+Where x,y are in PDF page coordinate space (PDF.js viewport units).
+
+When rendering:
+- Compute viewport for current scale
+- Convert normalized back to viewport pixels:
+  - x_px = x_norm * viewport.width
+  - y_px = y_norm * viewport.height
+- Place pin absolutely in overlay relative to the page container.
+
+Also implement:
+- hit testing (tap pin to open issue)
+- center-on-pin (scroll/pan to bring pin into view)
+
+---
+
+## 6) UI / UX details
+- Use a split layout on tablet:
+  - left: plan viewer
+  - right: issue panel (collapsible)
+- Provide quick actions:
+  - “Add issue” mode toggle
+  - “Hand” mode for pan (avoid accidental pins)
+- Filters: status/category/priority
+- Search by issue number/title
+- Show badge counters per status
+
+Accessibility:
+- Large touch targets
+- Works in landscape orientation
+
+---
+
+## 7) Deliverables / Acceptance Criteria
+Must be demonstrably usable on an Android tablet:
+- Can install as PWA (“Add to Home Screen”)
+- Can open a plan once, then reopen it offline (cached)
+- Can create/edit issues offline; changes persist after refresh
+- When online again, sync pushes issues + photos to server
+- Export report PDF works and includes photos and issue fields
+
+Provide:
+- README updates:
+  - setup instructions
+  - DB migration steps
+  - PWA install notes
+  - offline/sync behavior
+- A small seed/demo plan and sample data (optional).
+
+---
+
+## 8) Suggested implementation plan (do in commits)
+1) Inspect existing repo code structure (index.html/export.html/app/).
+2) Add/confirm PDF.js viewer and overlay.
+3) Implement issue model + overlay rendering + UI panel.
+4) Implement API + DB schema + basic CRUD (online).
+5) Add photo capture/compress + upload + thumbnails.
+6) Add PWA manifest + service worker caching + offline UI.
+7) Add IndexedDB persistence + sync queue.
+8) Implement Export A (report PDF).
+9) Polish: filters, jump-to-issue, status coloring, error handling.
+
+---
+
+## 9) Notes
+- Prefer progressive enhancement: app should still work online without PWA features.
+- Keep dependencies minimal and vendor them into vendor/ if needed.
+- Ensure paths work on typical shared hosting (no Node build step required).
+
+Start now by:
+- auditing current files,
+- confirming PDF.js integration,
+- then building the overlay + issue CRUD flow.
+
