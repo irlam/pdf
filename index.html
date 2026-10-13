@@ -2,12 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>PDF Editor — Enhanced Layout</title>
+  <title>PDF Studio — Defect Tracker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <!-- Modern, compact UI -->
   <link rel="stylesheet"
-        href="/assets/ui.css?v=<?=filemtime($_SERVER['DOCUMENT_ROOT'].'/assets/ui.css')?>">
+        href="/assets/ui.css?v=20261013">
+  <link rel="stylesheet" href="/assets/editor.css?v=20261013">
 
   <!-- Tesseract.js for OCR (loaded from CDN) -->
   <script src="https://unpkg.com/tesseract.js@v4.1.4/dist/tesseract.min.js" defer onerror="console.log('OCR: Tesseract.js not available')"></script>
@@ -109,13 +110,13 @@
     .bar, .bar2, .bar3{ display:none; }
   </style>
 </head>
-<body>
+<body class="pdf-studio">
 
 <!-- Loading indicator -->
 <div id="loadingIndicator"><div class="spinner"></div><span id="loadingText">Loading PDF...</span></div>
 
 <header class="topnav">
-  <div class="brand">PDF Editor</div>
+  <div class="brand">PDF <span>Studio</span></div>
   <nav>
     <a href="/tools/merge.html">Merge</a>
     <a href="/tools/split.html">Split</a>
@@ -417,6 +418,7 @@ let zoom = 1;
 
 // NEW: per-page visual rotation offsets (0/90/180/270)
 let pageRotDelta = [];
+let pageViewports = {};
 
 let edits = [];               // staged items: {id,type,page,rectCss:{x,y,w,h},rot, ...}
 let nextId = 1;
@@ -445,8 +447,8 @@ let findIndex = -1;
 /* ====== Loading & rendering ====== */
 async function loadBoth(arrayBuffer){
   pdfBytes = arrayBuffer;
-  pdfDocWriter = await PDFLib.PDFDocument.load(pdfBytes);
-  pdfDocRender = await pdfjsLib.getDocument({ data: pdfBytes }).promise;
+  pdfDocWriter = await PDFLib.PDFDocument.load(new Uint8Array(pdfBytes));
+  pdfDocRender = await pdfjsLib.getDocument({ data: new Uint8Array(pdfBytes).slice() }).promise;
   pageCount = pdfDocRender.numPages;
   currentPageIndex = clamp(currentPageIndex, 0, pageCount-1);
 
@@ -471,6 +473,9 @@ async function renderPage(index, resetZoom=false){
   });
 
   // size canvases
+  const previous = pageViewports[index];
+  if (previous) reprojectEdits(index, previous, viewport);
+  pageViewports[index] = { viewport, pixelRatio: dpr() };
   el.pdfCanvas.width = Math.floor(viewport.width);
   el.pdfCanvas.height = Math.floor(viewport.height);
   el.pdfCanvas.style.width = Math.floor(viewport.width / dpr()) + 'px';
@@ -524,15 +529,33 @@ function pdfToCssPoint(pdfX, pdfY){
   const [devX, devY] = viewport.convertToViewportPoint(pdfX, pdfY);
   return { x: devX/dpr(), y: devY/dpr() };
 }
-function cssToPdf(ptCss){
-  const dev = { x: ptCss.x*dpr(), y: ptCss.y*dpr() };
-  const [pdfX, pdfY] = viewport.convertToPdfPoint(dev.x, dev.y);
+function cssToPdf(ptCss, pageIndex=currentPageIndex){
+  const view = pageViewports[pageIndex];
+  const vp = view ? view.viewport : viewport;
+  const ratio = view ? view.pixelRatio : dpr();
+  const [pdfX, pdfY] = vp.convertToPdfPoint(ptCss.x*ratio, ptCss.y*ratio);
   return { x: pdfX, y: pdfY };
 }
-function cssRectToPdf(r){
-  const tl = cssToPdf({x:r.x, y:r.y});
-  const br = cssToPdf({x:r.x+r.w, y:r.y+r.h});
-  return { x:tl.x, y:br.y, w:br.x-tl.x, h:tl.y-br.y };
+function cssRectToPdf(r, pageIndex=currentPageIndex){
+  const points = [{x:r.x,y:r.y},{x:r.x+r.w,y:r.y},{x:r.x+r.w,y:r.y+r.h},{x:r.x,y:r.y+r.h}].map(p=>cssToPdf(p,pageIndex));
+  const xs=points.map(p=>p.x), ys=points.map(p=>p.y);
+  return {x:Math.min(...xs),y:Math.min(...ys),w:Math.max(...xs)-Math.min(...xs),h:Math.max(...ys)-Math.min(...ys)};
+}
+function reprojectEdits(pageIndex, previous, next){
+  const project = p => {
+    const pdf = previous.viewport.convertToPdfPoint(p.x*previous.pixelRatio,p.y*previous.pixelRatio);
+    const css = next.convertToViewportPoint(...pdf);
+    return {x:css[0]/dpr(),y:css[1]/dpr()};
+  };
+  for (const it of [edits,...undoStack,...redoStack].flat().filter(it=>it.page===pageIndex)){
+    const r=it.rectCss;
+    const corners=[{x:r.x,y:r.y},{x:r.x+r.w,y:r.y},{x:r.x+r.w,y:r.y+r.h},{x:r.x,y:r.y+r.h}].map(project);
+    const xs=corners.map(p=>p.x),ys=corners.map(p=>p.y);
+    const nr={x:Math.min(...xs),y:Math.min(...ys),w:Math.max(...xs)-Math.min(...xs),h:Math.max(...ys)-Math.min(...ys)};
+    for(const key of ['a','b']) if(it[key]){const p=project({x:r.x+it[key].x,y:r.y+it[key].y});it[key]={x:p.x-nr.x,y:p.y-nr.y};}
+    if(it.points) it.points=it.points.map(p=>{const n=project({x:r.x+p.x*r.w,y:r.y+p.y*r.h});return {x:nr.w?(n.x-nr.x)/nr.w:0,y:nr.h?(n.y-nr.y)/nr.h:0};});
+    it.rectCss=nr;
+  }
 }
 function normalizeCssRect(a,b){
   const x1 = Math.min(a.x,b.x), y1 = Math.min(a.y,b.y);
@@ -742,7 +765,7 @@ function groupBox(){
 
 /* ====== Image cache ====== */
 const _img = new Map();
-function getImg(url){ if (_img.has(url)) return _img.get(url); const im=new Image(); im.src=url; _img.set(url,im); return im; }
+function getImg(url){ if (_img.has(url)) return _img.get(url); const im=new Image(); im.onload=()=>drawOverlay(); im.src=url; _img.set(url,im); return im; }
 
 /* ====== Undo/Redo ====== */
 function pushHistory(){ undoStack.push(deepClone(edits)); if (undoStack.length>200) undoStack.shift(); redoStack=[]; }
@@ -782,9 +805,11 @@ el.scroller.addEventListener('mousedown', (ev)=>{
       if (handle==='rotate'){ dragMode='rotate'; }
       else if (handle){ dragMode='resize'; resizeHandle=handle; }
       else { dragMode='move'; }
+      pushHistory();
       dragStart = {x:cssX, y:cssY};
       startRects = selectedIds.map(id=>({id, rect: {...edits.find(e=>e.id===id).rectCss}, rot: edits.find(e=>e.id===id).rot||0 }));
       groupBoxAtStart = groupBox();
+      drawOverlay();
       return;
     } else {
       // marquee selection
@@ -886,7 +911,7 @@ window.addEventListener('mousemove', (ev)=>{
 
 window.addEventListener('mouseup', (ev)=>{
   if (panning){ panning=false; el.scroller.style.cursor=''; return; }
-  if (dragMode){ pushHistory(); dragMode=null; startRects=null; resizeHandle=null; groupBoxAtStart=null; return; }
+  if (dragMode){ dragMode=null; startRects=null; resizeHandle=null; groupBoxAtStart=null; return; }
 
   if (toolDragging){
     const rect = el.pdfCanvas.getBoundingClientRect();
@@ -960,7 +985,7 @@ function isTyping(){
   return tag==='TEXTAREA'||tag==='SELECT'||(tag==='INPUT'&&texty.includes((type||'').toLowerCase()));
 }
 window.addEventListener('keydown', (e)=>{
-  if (e.code==='Space'){ spaceDown=true; e.preventDefault(); }
+  if (e.code==='Space' && !isTyping()){ spaceDown=true; e.preventDefault(); }
   if (!isTyping()){
     if (e.key==='g'||e.key==='G'){ settings.showGrid=!settings.showGrid; el.showGrid.checked=settings.showGrid; drawOverlay(); }
     if (e.key==='s'||e.key==='S'){ settings.snap=!settings.snap; el.snap.checked=settings.snap; drawOverlay(); }
@@ -1127,7 +1152,7 @@ async function applyEditsToPdf(){
 
   for (const it of edits){
     const page = pdfDocWriter.getPage(it.page);
-    const r = cssRectToPdf(it.rectCss);
+    const r = cssRectToPdf(it.rectCss, it.page);
     const rot = PDFLib.degrees(it.rot||0);
 
     if (it.type === 'redact'){
@@ -1353,12 +1378,12 @@ function showWarning(message, duration = 5000) {
 const dropZone = document.getElementById('dropZone');
 
 async function handlePdfFile(file) {
-  if (!file) return;
+  if (!file) return false;
   
   // Validate file type
   if (!file.type.includes('pdf') && !file.name.toLowerCase().endsWith('.pdf')) {
     showError('Please select a valid PDF file.');
-    return;
+    return false;
   }
   
   // Warn about large files (but still process them)
@@ -1367,16 +1392,21 @@ async function handlePdfFile(file) {
     showWarning('Large file detected. Processing may take a while.');
   }
   
+  const previousState={pdfBytes,pdfDocWriter,pdfDocRender,currentPageIndex,pageCount,viewport,edits,undoStack,redoStack,selectedIds,pageViewports,pageRotDelta};
   try {
     showLoading('Loading PDF...');
     const buf = await file.arrayBuffer();
-    edits = []; undoStack = []; redoStack = []; selectedIds = [];
+    edits = []; undoStack = []; redoStack = []; selectedIds = []; pageViewports = {};
     await loadBoth(buf);
     hideLoading();
+    return true;
   } catch (err) {
+    ({pdfBytes,pdfDocWriter,pdfDocRender,currentPageIndex,pageCount,viewport,edits,undoStack,redoStack,selectedIds,pageViewports,pageRotDelta}=previousState);
+    if (pdfDocRender) await renderPage(currentPageIndex, true);
     hideLoading();
     console.error('Failed to load PDF:', err);
     showError('Failed to load PDF: ' + (err.message || 'Unknown error'));
+    return false;
   }
 }
 
@@ -1667,6 +1697,7 @@ if (ocrSelBtn) {
 
 <!-- Shape drawing tools: Box, Line, Arrow, Dimension -->
 <script src="/app/addons-draw.js"></script>
+<script src="/app/studio.js?v=20261013"></script>
 
 </body>
 </html>

@@ -1,0 +1,57 @@
+/* Editor workspace only; utility pages retain their existing styles. */
+body.pdf-studio{height:100dvh;overflow:hidden;background:#101827;--border:#2a3548;--sidebar-width:284px;--control-h:34px}
+.pdf-studio *{box-sizing:border-box}
+.pdf-studio [hidden]{display:none!important}
+.pdf-studio .topnav{height:60px;padding:10px 20px;background:#101827;flex-shrink:0;z-index:60}
+.pdf-studio .brand{font-size:20px;letter-spacing:-.6px}.pdf-studio .brand span{color:#60a5fa}
+.pdf-studio .topnav nav{gap:2px}.pdf-studio .topnav nav a{font-size:12px;padding:6px 8px}
+.pdf-studio button{box-shadow:none;line-height:1.2;height:auto;min-height:34px;border-radius:7px;transform:none;background:#202c40;font-size:12px}
+.pdf-studio button:hover{background:#2c3b53;box-shadow:none;transform:none}.pdf-studio button:disabled{opacity:.4;cursor:default}
+.pdf-studio button.btn-primary,.pdf-studio #download{background:#2563eb;color:#fff;border-color:#3b82f6}
+.pdf-studio .main-layout{height:calc(100dvh - 60px);gap:0;position:relative;overflow:hidden}
+.pdf-studio .sidebar{order:3;width:284px;min-width:284px;background:#141f31;padding:16px 12px;border-left:1px solid var(--border);border-right:0;gap:12px}
+.pdf-studio .sidebar-section{background:transparent;border:0;border-bottom:1px solid var(--border);border-radius:0;padding:0 0 14px}
+.pdf-studio .sidebar-section h4{font-size:11px;letter-spacing:1px;margin-bottom:12px}
+.pdf-studio .sidebar-section label{font-size:12px}.pdf-studio .sidebar-row{gap:8px;flex-wrap:wrap}
+.pdf-studio .sidebar-row label{min-width:100px}.pdf-studio .sidebar-section input[type=color]{height:30px;width:40px;border-radius:5px}
+.pdf-studio input,.pdf-studio select,.pdf-studio textarea{font:inherit;color:#e2e8f0;background:#0f172a;border:1px solid #344155;border-radius:6px;padding:7px;max-width:100%}
+.pdf-studio textarea{resize:vertical;width:100%;min-height:68px;font-size:12px}
+.pdf-studio .viewer-area{order:2;min-width:0;background:#253044}
+.pdf-studio .top-toolbar{padding:12px 16px;background:#182336;gap:10px;flex-shrink:0}
+.pdf-studio .document-name{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:230px}
+.pdf-studio .draft-status{font-size:11px;color:#93a8c5}.pdf-studio .document-actions{margin-left:auto;display:flex;gap:8px;align-items:center}
+.pdf-studio .tool-strip{display:flex;align-items:center;gap:5px;padding:8px 12px;background:#141f31;border-bottom:1px solid var(--border);overflow-x:auto;flex-shrink:0}
+.pdf-studio .tool-strip button{white-space:nowrap;background:transparent;border:1px solid transparent;flex-shrink:0;font-size:12px;padding:7px 10px}
+.pdf-studio .tool-strip button[aria-pressed=true]{background:#243f67;border-color:#3b82f6;color:#bfdbfe}
+.pdf-studio #viewerShell{margin:0;padding:20px;border:0;border-radius:0;background:#253044}
+.pdf-studio #pageLayer{box-shadow:0 8px 32px #0005}.pdf-studio #overlayCanvas{touch-action:none;pointer-events:auto}
+.pdf-studio .status-bar{justify-content:space-between;background:#141f31;border-color:var(--border);padding:8px 14px;flex-wrap:wrap;gap:8px;font-size:11px}
+.pdf-studio .pages-panel{order:1;width:176px;min-width:176px;background:#141f31;border-right:1px solid var(--border);overflow-y:auto;padding:14px 12px}
+.pdf-studio .panel-heading{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;margin:0 0 12px;display:flex;justify-content:space-between;align-items:center}
+.pdf-studio .thumbnail{width:100%;padding:8px;background:transparent;border:1px solid transparent;display:flex;flex-direction:column;align-items:center;gap:8px;margin-bottom:10px}
+.pdf-studio .thumbnail canvas{max-width:120px;max-height:160px;background:white;box-shadow:0 2px 8px #0004}
+.pdf-studio .thumbnail[aria-current=true]{background:#203555;border-color:#60a5fa}.pdf-studio .thumbnail.drag-over{border-color:#fbbf24}
+.pdf-studio .page-action-row{display:flex;gap:6px;margin-bottom:12px}.pdf-studio .page-action-row button{flex:1}
+.pdf-studio .empty-state{position:absolute;inset:30px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:12px;pointer-events:none}
+.pdf-studio .empty-state button{pointer-events:auto;padding:12px 22px}.pdf-studio .empty-state h1{font-size:28px;letter-spacing:-1px;margin:0}.pdf-studio .empty-state p{max-width:360px;color:#a9b8cf;font-size:13px;line-height:1.7;margin:0}
+.pdf-studio .empty-icon{color:#60a5fa;font-size:44px}.pdf-studio .comment-list{display:flex;flex-direction:column;gap:8px;margin-top:10px}.pdf-studio .comment-card{padding:10px;border:1px solid var(--border);border-radius:7px;text-align:left;white-space:normal;overflow-wrap:anywhere;height:auto}
+.pdf-studio .comment-card small{display:block;color:#94a3b8;margin-top:4px}.pdf-studio .muted{line-height:1.6}
+.pdf-studio dialog{max-width:min(520px,94vw);width:520px;background:#172338;border:1px solid #344155;color:#e2e8f0;border-radius:12px;padding:22px;box-shadow:0 20px 80px #0008}
+.pdf-studio dialog::backdrop{background:#0009}.pdf-studio dialog h2{font-size:18px;margin-top:0}.pdf-studio dialog p{font-size:13px;line-height:1.6;color:#a9b8cf}.pdf-studio dialog .dialog-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}.pdf-studio .signature-pad{width:100%;height:160px;background:#fff;border-radius:8px;touch-action:none}
+.pdf-studio .properties-toggle{display:none}.pdf-studio .file-input{max-width:210px;font-size:11px}
+.pdf-studio .tool-instruction{color:#bfdbfe;font-size:11px;min-height:17px}
+@media(max-width:1150px){.pdf-studio .pages-panel{width:140px;min-width:140px}.pdf-studio .sidebar{width:254px;min-width:254px}.pdf-studio .topnav nav a{padding:4px 5px}}
+@media(max-width:900px){.pdf-studio .sidebar{position:absolute;left:auto;right:0;top:0;height:100%;transform:translateX(100%);z-index:55;width:284px;min-width:284px;box-shadow:-10px 0 30px #0006}.pdf-studio .sidebar.open{transform:translateX(0)}.pdf-studio .properties-toggle{display:block}.pdf-studio .sidebar-toggle{display:none}.pdf-studio .topnav nav{max-width:60%;overflow-x:auto;flex-wrap:nowrap}.pdf-studio .topnav nav a{white-space:nowrap}.pdf-studio .document-name{max-width:140px}.pdf-studio .draft-status{max-width:140px}}
+@media(max-width:600px){.pdf-studio .topnav{padding:8px 12px;height:52px}.pdf-studio .main-layout{height:calc(100dvh - 52px)}.pdf-studio .pages-panel{position:absolute;left:0;top:0;bottom:0;z-index:54;width:160px;transform:translateX(-100%);transition:transform .2s}.pdf-studio .pages-panel.open{transform:none}.pdf-studio .top-toolbar{padding:8px;gap:8px}.pdf-studio .document-actions{margin-left:0}.pdf-studio .document-name{max-width:170px}.pdf-studio .tool-strip{padding:6px}.pdf-studio #viewerShell{padding:8px}.pdf-studio .status-bar>span:first-child{display:none}.pdf-studio .file-input{max-width:150px}}
+
+.pdf-studio #scroller{background:transparent}
+.pdf-studio .btn-amber{background:#26374c;color:#dbeafe;border-color:#3c526d}
+
+.pdf-studio .document-actions{flex-wrap:wrap;max-width:100%;min-width:0}
+.pdf-studio .status-bar .page-action-row{flex-wrap:wrap}
+
+.pdf-studio .sidebar-section>summary{font-size:11px;letter-spacing:1px;color:#94a3b8;text-transform:uppercase;cursor:pointer;padding-bottom:10px}
+.pdf-studio .sidebar-section>summary:focus-visible{outline:2px solid #60a5fa;outline-offset:3px}
+
+.pdf-studio .properties-toggle{display:block}
+.pdf-studio .pages-panel.collapsed,.pdf-studio .sidebar.collapsed{display:none}

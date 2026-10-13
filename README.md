@@ -8,7 +8,7 @@ This tool provides a comprehensive suite of PDF editing and manipulation feature
 
 ### Core Editor (`index.html`)
 - **Text Editing**: Cover existing text and replace with new content (fonts, sizes, colors, alignment)
-- **Redaction**: Draw opaque boxes to permanently hide sensitive content
+- **Secure Redaction**: Rebuild affected pages as masked images, removing underlying content from the exported PDF (affected pages lose searchable text)
 - **Image Placement**: Insert PNG/JPG images anywhere on the page
 - **Watermark/Stamp**: Add semi-transparent text overlays like "DRAFT" or "CONFIDENTIAL"
 - **Drawing Tools**: Add boxes, lines, arrows, and dimension annotations with dedicated stroke colour, width and dashed controls. Boxes have a separate fill colour. Select staged drawings and use **Update selected drawings** to change their style (supports Undo/Redo). Drawing colours are independent of text colours and retained when applying/downloading the PDF.
@@ -19,6 +19,15 @@ This tool provides a comprehensive suite of PDF editing and manipulation feature
 - **Scale Calibration**: Auto-detect or manually calibrate drawing scales for accurate measurements
 - **Undo/Redo**: Full history of all edits
 - **Drag & Drop**: Simply drag PDF files onto the editor to open them
+
+### Professional workspace
+- **Document layout**: Page thumbnails on the left, a scrollable editing toolbar above the document, and contextual properties on the right. Both side panels can be collapsed; phones use drawers.
+- **Editable drafts**: Automatic and manual browser drafts include the PDF, annotations, images, custom fonts, page rotations and measurement scale. Restore the latest draft after a reload. Drafts are stored locally in IndexedDB, with a 100 MB document limit; storage quotas still depend on the browser.
+- **Review tools**: Highlights with adjustable opacity, freehand pen, ellipses, revision clouds and numbered comments/callouts. Comments remain editable until applied and become visible PDF content on export.
+- **Stamps and signatures**: Approved, Reviewed, Draft, Confidential, Rejected and a saved custom stamp. Draw and reuse a visual signature locally; this is not a certificate-based digital signature.
+- **Measurements**: Calibrated line dimensions, polygon area and open-path perimeter. Set scale and units in Measurement scale; click points and choose Finish measurement or press Enter. Each area/perimeter annotation retains its own scale and units.
+- **Page management**: Navigate thumbnails, drag to reorder, or use page buttons to insert, duplicate, delete and move pages. Page operations retain staged annotations and clear the annotation undo history after remapping pages.
+- **Export reliability**: Per-page coordinates keep marks positioned across zoom changes, different page sizes and draft restores. Invalid uploads preserve the current document.
 
 ### Additional Tools
 - **Merge** (`/tools/merge.html`): Combine multiple PDFs into a single document with drag-to-reorder
@@ -35,8 +44,9 @@ This tool provides a comprehensive suite of PDF editing and manipulation feature
 2. **Load a PDF**: Click the file picker or drag & drop a PDF onto the page
 3. **Choose a Tool**: Select from the toolbar (Select, Edit Text, Redact, Image, drawing tools, etc.)
 4. **Make Edits**: Draw, type, or place content on the page
-5. **Apply Changes**: Click "Apply to PDF" to embed your edits into the document
-6. **Save/Download**: Download the edited file or upload to your server
+5. **Keep an Editable Copy**: Drafts save automatically in this browser; use **Save draft** for an immediate checkpoint.
+6. **Save/Download**: Use the top **Download PDF** button, or expand **Apply / server versions** to apply annotations or save on your server. Applying permanently embeds annotations and resets annotation history.
+7. **Recover**: **Restore draft** reopens the latest editable draft. Export retains a pre-apply draft, so restoring it can recover annotations. The draft still contains the original document, including content later redacted; use **Clear draft** in Apply / server versions when finished.
 
 ### Keyboard Shortcuts
 | Key | Action |
@@ -146,6 +156,7 @@ See `/fonts/README.md` for detailed instructions.
 │   └── save.php        # Handles PDF uploads/versioning
 │
 ├── /app/
+│   ├── studio.js       # Workspace, drafts, markup, page operations, secure redaction
 │   ├── addons-draw.js  # Drawing tools (box, line, arrow, dimension)
 │   └── exporters.js    # CSV/JSON/SVG/DXF export logic
 │
@@ -194,6 +205,20 @@ All dependencies are vendored locally — no external CDNs in production:
 - **Complex PDFs**: Very large or highly complex PDFs may be slow to process
 - **DWG Conversion**: Requires server-side LibreDWG or ODA converter binaries
 - **Browser Support**: Works in Chrome, Edge, Firefox, Safari (current versions)
+
+## Development validation
+
+Production still needs only HTML/CSS/JavaScript and optional PHP. The browser regression test is development tooling:
+
+```bash
+npm install --no-save --package-lock=false playwright
+npx playwright install chromium
+node tests/studio.e2e.cjs
+```
+
+Set `PDF_STUDIO_BROWSER_EXECUTABLE` to use an existing Chromium executable. The test serves the repository on a temporary localhost port and exercises drawing colours, markup, signatures, comments, undo, zoom, invalid uploads, page operations, draft recovery, secure redaction, PDF export and mobile controls. It writes screenshots and a test PDF to a temporary directory, without touching server storage.
+
+Secure-redaction export rebuilds the affected pages at approximately 150 dpi, capped at 16 million pixels per page to control memory. Text and native form fields/links on those pages become image content. Unaffected pages retain their original PDF content. The redacted export does not contain the original page streams, but any retained browser draft remains an unredacted source copy.
 
 ## About
 

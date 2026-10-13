@@ -29,11 +29,12 @@
 
 <div class="wrap help">
   <h1>Help</h1>
-  <p class="lead">True content editing with PDF.js rendering, staged overlays, measurements, and exports.</p>
+  <p class="lead">Edit and review PDFs with staged annotations, recoverable drafts, measurements and secure redaction.</p>
 
   <div class="section">
     <h2>Contents</h2>
     <div class="toc">
+      <a href="#workspace">Professional workspace</a>
       <a href="#quickstart">Quick start</a>
       <a href="#tools">Tools overview</a>
       <a href="#drawing">Drawing &amp; measurement</a>
@@ -170,18 +171,35 @@
     </table>
   </div>
 
+  <div id="workspace" class="section">
+    <h2>Professional workspace</h2>
+    <p>Use page thumbnails on the left, the editing toolbar above the document and Properties on the right. The Pages and Properties buttons collapse the panels; on phones they open drawers.</p>
+    <ul>
+      <li><b>Drawing colour:</b> Select Line, Arrow or another drawing tool and choose Colour, Width or Dashed in Properties. Select staged drawings and use Update selected drawings to restyle them.</li>
+      <li><b>Drafts:</b> Your latest editable draft saves automatically in this browser. Save draft creates an immediate checkpoint; Restore draft recovers it after reloading. Browser storage is not shared between devices or browsers.</li>
+      <li><b>Comments:</b> Choose Comment / callout, write the comment in Properties, then click the page. Select a callout to edit its text. The comment list navigates to its page.</li>
+      <li><b>Markup:</b> Drag to highlight, draw a freehand pen stroke, ellipse or revision cloud. Stamps include preset labels and a custom label saved in this browser.</li>
+      <li><b>Signatures:</b> Create a signature in Properties, save it, then drag on the page to place it. This is a visual signature, not a cryptographic certificate signature.</li>
+      <li><b>Area and perimeter:</b> Set the scale and units, click points, then Finish measurement or press Enter. Area closes the polygon; perimeter measures an open path. Escape cancels. Verify calibration against a known drawing dimension.</li>
+      <li><b>Pages:</b> Click a thumbnail to navigate. Drag thumbnails to reorder, or use the page buttons. Staged annotations follow their pages. Structural page changes reset the annotation undo history.</li>
+      <li><b>Secure redaction:</b> Draw a redaction rectangle, then download or apply. Affected pages are rebuilt as masked images so underlying content, including staged annotations beneath the mask, is removed. Those pages lose searchable text and interactive fields/links.</li>
+      <li><b>Pre-apply draft:</b> Applying or downloading retains an editable draft of the original document. That draft still contains any source content you redact in the export. Clear draft in Apply / server versions removes the browser draft when no longer needed.</li>
+    </ul>
+    <p><span class="kbd">Ctrl/Cmd+S</span> saves a draft. <span class="kbd">Ctrl/Cmd+Z</span> undoes; <span class="kbd">Ctrl/Cmd+Shift+Z</span> or <span class="kbd">Ctrl/Cmd+Y</span> redoes annotation changes.</p>
+  </div>
+
   <div id="troubleshoot" class="section">
     <h2>Troubleshooting</h2>
     <ul>
       <li><b>Blank page or error</b> — ensure <code>/vendor/pdf.min.js</code> and <code>/vendor/pdf.worker.min.js</code> are present (using the <code>legacy/</code> build of pdfjs-dist).</li>
-      <li><b>Addon tools missing</b> — confirm <code>&lt;script src="/app/addons-draw.js"&gt;</code> is the last script before <code>&lt;/body&gt;</code>.</li>
+      <li><b>Addon tools missing</b> — confirm both <code>/app/addons-draw.js</code> and <code>/app/studio.js</code> load after the main editor scripts.</li>
       <li><b>Styling didn’t change</b> — cache-bust the CSS link: <code>/assets/ui.css?v=2</code> and hard refresh.</li>
       <li><b>Dimension label looks wrong</b> — run <b>Calibrate</b> on a known span or use <b>Auto Scale</b> if the title block has a scale line.</li>
       <li><b>Fonts</b> — upload a <b>Custom TTF</b> to match the original typeface for best fidelity.</li>
     </ul>
   </div>
 
-  <p class="muted">Last updated: today.</p>
+  <p class="muted">Last updated: 13 October 2026.</p>
 </div>
 </body>
 </html>

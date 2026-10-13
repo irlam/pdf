@@ -119,6 +119,8 @@
 
   /* ----------------------- Scale state & helpers ----------------------- */
   const scale = { ratio: 100, units: 'mm' }; // default 1:100 in mm
+  window.pdfDrawingScale = scale;
+  const publishScale = () => window.dispatchEvent(new Event('pdf-scale-change'));
   function convertToMm(value, unit){
     switch(unit){
       case 'mm': return value;
@@ -160,6 +162,7 @@
       const r = Math.min(...found);
       scale.ratio = r;
       unitSel.value = scale.units;
+      publishScale();
       alert(`Detected scale 1:${r}`);
       return r;
     }
@@ -188,13 +191,14 @@
     const realInMm = convertToMm(real, ru);
     scale.ratio = realInMm / distMmDrawing;
     scale.units = ru;
+    publishScale();
     alert(`Calibrated: 1 drawing mm = ${scale.ratio.toFixed(4)} ${ru}`);
     calibrating=false;
   }
 
   document.getElementById('autoScale').addEventListener('click', ()=>autoDetectScale());
   document.getElementById('calibrate').addEventListener('click', ()=>beginCalibrate());
-  unitSel.addEventListener('change', ()=>{ scale.units = unitSel.value; });
+  unitSel.addEventListener('change', ()=>{ scale.units = unitSel.value; publishScale(); });
 
   /* ----------------------- New staged item creators ----------------------- */
   function makeBox(r){
@@ -411,14 +415,14 @@
         const page = pdfDocWriter.getPage(it.page);
 
         if (it.type==='box'){
-          const r = cssRectToPdf(it.rectCss);
+          const r = cssRectToPdf(it.rectCss, it.page);
           // fill
           if (it.fill){
             page.drawRectangle({ x:r.x, y:r.y, width:r.w, height:r.h, color: hexRgb(it.fill) });
           }
           // stroke
           if ((it.width||0)>0){
-            const path = `M ${r.x} ${r.y} h ${r.w} v ${r.h} h ${-r.w} Z`;
+            const path = `M ${r.x} ${-r.y} h ${r.w} v ${-r.h} h ${-r.w} Z`;
             page.drawSvgPath(path, {
               borderColor: hexRgb(it.stroke||'#000000'),
               borderWidth: it.width||1,
@@ -431,11 +435,11 @@
         if (it.type==='line' || it.type==='arrow' || it.type==='dimension'){
           const aCss = { x: it.rectCss.x + it.a.x, y: it.rectCss.y + it.a.y };
           const bCss = { x: it.rectCss.x + it.b.x, y: it.rectCss.y + it.b.y };
-          const a = cssToPdf(aCss), b = cssToPdf(bCss);
+          const a = cssToPdf(aCss, it.page), b = cssToPdf(bCss, it.page);
           const d = Math.hypot(b.x-a.x, b.y-a.y);
 
           // base line
-          const p = `M ${a.x} ${a.y} L ${b.x} ${b.y}`;
+          const p = `M ${a.x} ${-a.y} L ${b.x} ${-b.y}`;
           page.drawSvgPath(p, {
             borderColor: hexRgb(it.stroke||'#000000'),
             borderWidth: it.width||1,
@@ -447,7 +451,7 @@
             const ang = Math.atan2(b.y-a.y, b.x-a.x);
             const x1 = b.x - L*Math.cos(ang - Math.PI/6), y1 = b.y - L*Math.sin(ang - Math.PI/6);
             const x2 = b.x - L*Math.cos(ang + Math.PI/6), y2 = b.y - L*Math.sin(ang + Math.PI/6);
-            page.drawSvgPath(`M ${b.x} ${b.y} L ${x1} ${y1} M ${b.x} ${b.y} L ${x2} ${y2}`, {
+            page.drawSvgPath(`M ${b.x} ${-b.y} L ${x1} ${-y1} M ${b.x} ${-b.y} L ${x2} ${-y2}`, {
               borderColor: hexRgb(it.stroke||'#000000'),
               borderWidth: it.width||1
             });
@@ -457,8 +461,8 @@
             // ticks
             const nx = (b.y-a.y)/d, ny = -(b.x-a.x)/d; // unit normal
             const tick = 4;
-            const tickPath = `M ${a.x - nx*tick} ${a.y - ny*tick} L ${a.x + nx*tick} ${a.y + ny*tick}
-                              M ${b.x - nx*tick} ${b.y - ny*tick} L ${b.x + nx*tick} ${b.y + ny*tick}`;
+            const tickPath = `M ${a.x - nx*tick} ${-(a.y - ny*tick)} L ${a.x + nx*tick} ${-(a.y + ny*tick)}
+                              M ${b.x - nx*tick} ${-(b.y - ny*tick)} L ${b.x + nx*tick} ${-(b.y + ny*tick)}`;
             page.drawSvgPath(tickPath, { borderColor: hexRgb(it.stroke||'#000000'), borderWidth: it.width||1 });
 
             // label (RED + bigger + centered)
@@ -482,7 +486,7 @@
 
     // 2) Remove our items from 'edits' so the original handler won’t drop them
     if (ours.length){
-      window.edits = edits.filter(it => !OUR_TYPES.has(it.type));
+      edits = edits.filter(it => !OUR_TYPES.has(it.type));
     }
 
     // 3) Call original apply to handle text/image/redact and do save+reload
