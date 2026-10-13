@@ -34,6 +34,7 @@
       background:#0f172a; border:1px solid var(--border); border-radius:10px; padding:10px;
     }
     .sidebar-section h4{ margin:0 0 8px; font-size:13px; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; }
+    #drawingSettings[hidden], #boxFillSetting[hidden]{ display:none; }
     .sidebar-section label{ display:flex; align-items:center; gap:6px; margin-bottom:6px; font-size:13px; }
     .sidebar-section select, .sidebar-section input[type="text"], .sidebar-section input[type="number"]{
       width:100%; background:#0b1220; color:var(--text); border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:13px;
@@ -142,6 +143,20 @@
         <option value="find">Find Text</option>
         <option value="ocr">OCR (Extract Text)</option>
       </select>
+    </div>
+
+    <!-- Drawing Settings -->
+    <div class="sidebar-section" id="drawingSettings" hidden>
+      <h4>Drawing</h4>
+      <div class="sidebar-row">
+        <label>Colour: <input id="strokeColor" type="color" value="#000000" title="Drawing stroke colour" /></label>
+        <label>Width: <input id="strokeWidth" type="number" min="1" max="20" step="1" value="2" style="width:60px" title="Stroke width (px)" /></label>
+      </div>
+      <label><input id="strokeDashed" type="checkbox" /> Dashed line</label>
+      <label id="boxFillSetting">Box fill: <input id="boxFillColor" type="color" value="#ffffff" /></label>
+      <button id="updateDrawingSelection" type="button">Update selected drawings</button>
+      <p class="muted" style="margin:6px 0 0;font-size:12px">Choose a style before drawing, or select existing drawings and update their style.</p>
+      <p id="drawingStyleStatus" role="status" aria-live="polite" class="muted" style="margin:6px 0 0;font-size:12px"></p>
     </div>
 
     <!-- Text Settings -->
