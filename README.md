@@ -11,7 +11,7 @@ This tool provides a comprehensive suite of PDF editing and manipulation feature
 - **Redaction**: Draw opaque boxes to permanently hide sensitive content
 - **Image Placement**: Insert PNG/JPG images anywhere on the page
 - **Watermark/Stamp**: Add semi-transparent text overlays like "DRAFT" or "CONFIDENTIAL"
-- **Drawing Tools**: Add boxes, lines, arrows, and dimension annotations
+- **Drawing Tools**: Add boxes, lines, arrows, and dimension annotations with dedicated stroke colour, width and dashed controls. Boxes have a separate fill colour. Select staged drawings and use **Update selected drawings** to change their style (supports Undo/Redo). Drawing colours are independent of text colours and retained when applying/downloading the PDF.
 - **Page Operations**: Insert, duplicate, delete, rotate, and reorder pages
 - **Find & Replace**: Search for text runs and overlay replacements
 - **Zoom & Pan**: Navigate large documents with smooth controls

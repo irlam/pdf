@@ -48,6 +48,22 @@
   addTool('arrow',      'Arrow');
   addTool('dimension',  'Dimension (measure)');
 
+  const drawingSettings = document.getElementById('drawingSettings');
+  const strokeColor = document.getElementById('strokeColor');
+  const boxFillColor = document.getElementById('boxFillColor');
+  const styleStatus = document.getElementById('drawingStyleStatus');
+  function drawingWidth(){
+    const value = Number(strokeWidth.value);
+    return Number.isFinite(value) && value > 0 ? Math.max(1, Math.min(20, Math.round(value))) : 2;
+  }
+  function showDrawingSettings(){
+    drawingSettings.hidden = !OUR_TYPES.has(el.tool.value) && el.tool.value !== 'select';
+    document.getElementById('boxFillSetting').hidden = !['box', 'select'].includes(el.tool.value);
+    styleStatus.textContent = '';
+  }
+  el.tool.addEventListener('change', showDrawingSettings);
+  showDrawingSettings();
+
   // Stroke width input
   let strokeWidth = document.getElementById('strokeWidth');
   if (!strokeWidth){
@@ -65,6 +81,22 @@
     const bar = el.tool.closest('.bar') || el.tool.closest('.sidebar-section');
     if (bar) bar.appendChild(labelWrap('Dashed', strokeDashed));
   }
+  document.getElementById('updateDrawingSelection').addEventListener('click', () => {
+    const selected = edits.filter(it => it.page === currentPageIndex && selectedIds.includes(it.id) && OUR_TYPES.has(it.type));
+    if (!selected.length){
+      styleStatus.textContent = 'Select a line, arrow, box or dimension on this page first.';
+      return;
+    }
+    pushHistory();
+    for (const it of selected){
+      it.stroke = strokeColor.value;
+      it.width = drawingWidth();
+      it.dashed = strokeDashed.checked;
+      if (it.type === 'box') it.fill = boxFillColor.value;
+    }
+    drawOverlay();
+    styleStatus.textContent = `${selected.length} drawing${selected.length === 1 ? '' : 's'} updated.`;
+  });
   // Units + Calibrate/Auto buttons (go in bar2)
   let unitSel = document.getElementById('units');
   if (!unitSel){
@@ -168,8 +200,8 @@
   function makeBox(r){
     return {
       id: nextId++, type:'box', page: currentPageIndex, rectCss: r, rot:0,
-      stroke: el.textColor.value, fill: el.paintColor.value,
-      width: parseInt(strokeWidth.value||'2',10), dashed: !!strokeDashed.checked
+      stroke: strokeColor.value, fill: boxFillColor.value,
+      width: drawingWidth(), dashed: !!strokeDashed.checked
     };
   }
   function makeLine(r, a, b){ // endpoints relative to rect
@@ -177,7 +209,7 @@
     return {
       id: nextId++, type:'line', page: currentPageIndex, rectCss: r, rot:0,
       a: rel(a), b: rel(b),
-      stroke: el.textColor.value, width: parseInt(strokeWidth.value||'2',10), dashed: !!strokeDashed.checked
+      stroke: strokeColor.value, width: drawingWidth(), dashed: !!strokeDashed.checked
     };
   }
   function makeArrow(r, a, b){ const it=makeLine(r,a,b); it.type='arrow'; return it; }
@@ -294,9 +326,10 @@
     const css = extStartCss;
     overlayCtx.clearRect(0,0,el.overlay.width, el.overlay.height);
     if (typeof drawGrid === 'function') drawGrid();
-    overlayCtx.lineWidth = 2*dpr();
-    overlayCtx.setLineDash([6*dpr(),4*dpr()]);
-    overlayCtx.strokeStyle = "rgba(59,130,246,0.9)";
+    overlayCtx.save();
+    overlayCtx.lineWidth = drawingWidth()*dpr();
+    overlayCtx.setLineDash(strokeDashed.checked ? [8*dpr(),6*dpr()] : []);
+    overlayCtx.strokeStyle = strokeColor.value;
     if (tool==='box'){
       const rd = toDev({x:css.x, y:css.y, w:1, h:1});
       overlayCtx.strokeRect(rd.x,rd.y,rd.w,rd.h);
@@ -306,6 +339,7 @@
       overlayCtx.lineTo(css.x*dpr(), css.y*dpr());
       overlayCtx.stroke();
     }
+    overlayCtx.restore();
   });
 
   window.addEventListener('mousemove', (ev) => {
@@ -316,16 +350,18 @@
 
     overlayCtx.clearRect(0,0,el.overlay.width, el.overlay.height);
     if (typeof drawGrid === 'function') drawGrid();
-    overlayCtx.lineWidth = 2*dpr();
-    overlayCtx.setLineDash([6*dpr(),4*dpr()]);
-    overlayCtx.strokeStyle = "rgba(59,130,246,0.9)";
+    overlayCtx.save();
+    overlayCtx.lineWidth = drawingWidth()*dpr();
+    overlayCtx.setLineDash(strokeDashed.checked ? [8*dpr(),6*dpr()] : []);
+    overlayCtx.strokeStyle = strokeColor.value;
 
     const tool = el.tool.value;
     if (tool==='box'){
       const r = normalizeCssRect(extStartCss, css);
       const rd = toDev(r);
       overlayCtx.strokeRect(rd.x,rd.y,rd.w,rd.h);
-      overlayCtx.fillStyle = "rgba(59,130,246,0.12)";
+      overlayCtx.fillStyle = boxFillColor.value;
+      overlayCtx.globalAlpha = 0.2;
       overlayCtx.fillRect(rd.x,rd.y,rd.w,rd.h);
     } else {
       overlayCtx.beginPath();
@@ -333,6 +369,7 @@
       overlayCtx.lineTo(css.x*dpr(), css.y*dpr());
       overlayCtx.stroke();
     }
+    overlayCtx.restore();
   });
 
   window.addEventListener('mouseup', (ev) => {
