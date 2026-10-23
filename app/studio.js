@@ -2,6 +2,8 @@
    Classic script intentionally shares the existing editor's lexical state. */
 (function studio(){
   'use strict';
+  // Share scale state even when an older drawing add-on is cached.
+  window.pdfDrawingScale ||= { ratio: 100, units: 'mm' };
   const $ = id => document.getElementById(id);
   const TYPES = new Set(['highlight','pen','ellipse','cloud','callout','stamp','signature','area','perimeter']);
   const DRAW_TYPES = new Set(['box','line','arrow','dimension',...TYPES]);
