@@ -118,8 +118,8 @@
   }
 
   /* ----------------------- Scale state & helpers ----------------------- */
-  const scale = { ratio: 100, units: 'mm' }; // default 1:100 in mm
-  window.pdfDrawingScale = scale;
+  // Reuse scale state if the studio or a delayed boot created it first.
+  const scale = window.pdfDrawingScale ||= { ratio: 100, units: 'mm' };
   const publishScale = () => window.dispatchEvent(new Event('pdf-scale-change'));
   function convertToMm(value, unit){
     switch(unit){
