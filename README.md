@@ -21,7 +21,8 @@ This tool provides a comprehensive suite of PDF editing and manipulation feature
 - **Drag & Drop**: Simply drag PDF files onto the editor to open them
 
 ### Professional workspace
-- **Document layout**: Page thumbnails on the left, a scrollable editing toolbar above the document, and contextual properties on the right. Both side panels can be collapsed; phones use drawers.
+- **Document layout**: A compact toolbar keeps common tools in view; More tools contains the full tool list. Properties starts closed and opens when a tool needs settings. Pages and Properties can be toggled; phones use drawers with close controls. Draft actions live in the Drafts menu, and keyboard hints are under Shortcuts.
+- **PDF viewing**: Documents initially fit the whole page. Use Fit width for detail, Fit page for an overview, or Focus PDF to hide the tool row and both panels temporarily. Exiting focus restores the previous panel layout. Rotated pages also fit the available width and height.
 - **Editable drafts**: Automatic and manual browser drafts include the PDF, annotations, images, custom fonts, page rotations and measurement scale. Restore the latest draft after a reload. Drafts are stored locally in IndexedDB, with a 100 MB document limit; storage quotas still depend on the browser.
 - **Review tools**: Highlights with adjustable opacity, freehand pen, ellipses, revision clouds and numbered comments/callouts. Comments remain editable until applied and become visible PDF content on export.
 - **Stamps and signatures**: Approved, Reviewed, Draft, Confidential, Rejected and a saved custom stamp. Draw and reuse a visual signature locally; this is not a certificate-based digital signature.

@@ -55,3 +55,61 @@ body.pdf-studio{height:100dvh;overflow:hidden;background:#101827;--border:#2a354
 
 .pdf-studio .properties-toggle{display:block}
 .pdf-studio .pages-panel.collapsed,.pdf-studio .sidebar.collapsed{display:none}
+
+/* Keep the document in the foreground, including on shorter laptop screens. */
+body.pdf-studio{display:flex;flex-direction:column}
+.pdf-studio .topnav{height:44px;min-height:44px;padding:5px 16px}
+.pdf-studio .brand{font-size:18px}
+.pdf-studio .main-layout{height:auto;flex:1;min-height:0;width:100%}
+.pdf-studio .viewer-area{min-height:0}
+.pdf-studio .top-toolbar{padding:8px 12px;gap:8px;flex-wrap:nowrap;min-width:0}
+.pdf-studio .top-toolbar>button{flex-shrink:0}
+.pdf-studio .document-info{flex:1;min-width:0}
+.pdf-studio .document-name{max-width:none}
+.pdf-studio .draft-status{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:none}
+.pdf-studio .document-actions{flex-wrap:nowrap;flex-shrink:0;gap:5px;margin-left:0}
+.pdf-studio .document-actions>button{padding:7px 9px;white-space:nowrap}
+.pdf-studio .document-menu,.pdf-studio .keyboard-help{position:relative;flex-shrink:0}
+.pdf-studio .document-menu>summary,.pdf-studio .keyboard-help>summary{cursor:pointer;list-style:none;border:1px solid #344155;border-radius:7px;padding:8px;color:#cbd5e1;white-space:nowrap}
+.pdf-studio summary::-webkit-details-marker{display:none}
+.pdf-studio .document-menu-content,.pdf-studio .keyboard-help-content{position:absolute;right:0;min-width:200px;z-index:70;background:#172338;padding:10px;border:1px solid #344155;border-radius:8px;box-shadow:0 10px 25px #0006}
+.pdf-studio .document-menu-content{top:calc(100% + 8px);display:grid;gap:6px}
+.pdf-studio .keyboard-help-content{bottom:calc(100% + 8px);display:grid;gap:10px}
+.pdf-studio .tool-strip{padding:5px 10px;gap:3px;min-height:43px;scrollbar-width:thin}
+.pdf-studio .tool-strip button{padding:5px 8px;min-height:30px}
+.pdf-studio .more-tools{width:140px;flex-shrink:0;font-size:12px;padding:5px}
+.pdf-studio #viewerShell{padding:10px;min-height:0;overflow:hidden}
+.pdf-studio #scroller{border-radius:3px;scrollbar-width:thin}
+.pdf-studio .status-bar{padding:5px 10px;min-height:43px;flex-shrink:0;flex-wrap:nowrap;gap:10px}
+.pdf-studio .tool-instruction{flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.pdf-studio .status-bar .page-action-row{flex-wrap:nowrap;flex-shrink:0;gap:4px;margin:0!important}
+.pdf-studio .status-bar button{min-height:30px;padding:5px 8px;white-space:nowrap}
+.pdf-studio .status-bar #pageInfo{white-space:nowrap;margin-left:4px!important}
+.pdf-studio .pages-panel{width:156px;min-width:156px;padding:10px 8px;overflow-x:hidden}
+.pdf-studio .pages-panel .page-action-row{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.pdf-studio .pages-panel button{min-width:0;padding:6px 4px;font-size:11px}
+.pdf-studio .thumbnail canvas{max-width:100%;height:auto}
+.pdf-studio .sidebar{padding:12px 10px}
+.pdf-studio.pdf-focus .tool-strip{display:none}
+.pdf-studio.pdf-focus #viewerShell{padding:4px}
+.pdf-studio button[aria-expanded=true]{border-color:#60a5fa;background:#243f67}
+.pdf-studio summary:focus-visible{outline:2px solid #60a5fa;outline-offset:2px}
+@media(max-width:1100px){.pdf-studio .top-toolbar{flex-wrap:wrap}.pdf-studio .document-info{min-width:120px}.pdf-studio .document-actions{margin-left:auto}.pdf-studio .tool-instruction{display:none}}
+@media(max-width:600px){
+ .pdf-studio .topnav{height:44px;min-height:44px;padding:5px 10px}
+ .pdf-studio .main-layout{height:auto}
+ .pdf-studio .top-toolbar{padding:6px;gap:6px}
+ .pdf-studio .document-actions{width:100%;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px}
+ .pdf-studio .document-actions>button,.pdf-studio .document-menu>summary{font-size:11px;padding:5px 3px;white-space:normal;min-height:34px;text-align:center}
+ .pdf-studio .document-menu{min-width:0}
+ .pdf-studio .document-menu-content{right:-70px}
+ .pdf-studio .tool-strip{padding:4px 6px}
+ .pdf-studio #viewerShell{padding:6px}
+ .pdf-studio .status-bar{padding:4px 6px;gap:4px}
+ .pdf-studio .keyboard-help{display:none}
+ .pdf-studio .status-bar .page-action-row{width:100%;justify-content:center}
+ .pdf-studio .status-bar #pageInfo{font-size:10px}
+ .pdf-studio .status-bar #zoomPct{padding:4px}
+}
+
+.pdf-studio .panel-heading .panel-close{flex:none;min-height:24px;width:24px;padding:0;font-size:18px}

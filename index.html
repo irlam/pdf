@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <link rel="icon" href="/favicon.svg?v=20261023" type="image/svg+xml">
+  <link rel="alternate icon" href="/favicon.ico?v=20261023" sizes="16x16 32x32 48x48">
   <meta charset="utf-8" />
   <title>PDF Studio — Defect Tracker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -8,7 +10,7 @@
   <!-- Modern, compact UI -->
   <link rel="stylesheet"
         href="/assets/ui.css?v=20261013">
-  <link rel="stylesheet" href="/assets/editor.css?v=20261013">
+  <link rel="stylesheet" href="/assets/editor.css?v=20261023-layout">
 
   <!-- Tesseract.js for OCR (loaded from CDN) -->
   <script src="https://unpkg.com/tesseract.js@v4.1.4/dist/tesseract.min.js" defer onerror="console.log('OCR: Tesseract.js not available')"></script>
@@ -411,6 +413,7 @@ const overlayCtx = el.overlay.getContext('2d');
 let pdfBytes = null;
 let pdfDocWriter = null;      // pdf-lib
 let pdfDocRender = null;      // PDF.js
+let fitMode = 'page';
 let viewport = null;          // PDF.js viewport
 let currentPageIndex = 0;
 let pageCount = 0;
@@ -460,15 +463,18 @@ async function loadBoth(arrayBuffer){
 
 async function renderPage(index, resetZoom=false){
   const page = await pdfDocRender.getPage(index+1);
-  const containerW = Math.min(1100, el.scroller.clientWidth - 24 || 1100);
-  const baseViewport = page.getViewport({ scale:1 });
+  const containerW = Math.max(100, el.scroller.clientWidth - 16);
+  const containerH = Math.max(100, el.scroller.clientHeight - 16);
   if (resetZoom) zoom = 1;
 
   const baseRot = page.rotate || 0; // include intrinsic rotation
   const extraRot = ((pageRotDelta[index] || 0) % 360 + 360) % 360;
 
+  const rotation = (baseRot + extraRot) % 360;
+  const baseViewport = page.getViewport({ scale:1, rotation });
+  const fitScale = fitMode === 'page' ? Math.min(containerW / baseViewport.width, containerH / baseViewport.height) : containerW / baseViewport.width;
   viewport = page.getViewport({
-    scale: (containerW / baseViewport.width) * zoom * dpr(),
+    scale: fitScale * zoom * dpr(),
     rotation: (baseRot + extraRot) % 360
   });
 
@@ -1697,7 +1703,7 @@ if (ocrSelBtn) {
 
 <!-- Shape drawing tools: Box, Line, Arrow, Dimension -->
 <script src="/app/addons-draw.js?v=20261023-scale"></script>
-<script src="/app/studio.js?v=20261023-scale"></script>
+<script src="/app/studio.js?v=20261023-layout"></script>
 
 </body>
 </html>
