@@ -57,6 +57,12 @@ When leaving the editor, staged annotations are applied to the PDF carried to th
 
 Choose **Close current PDF** in the editor’s Drafts menu, or beside the filename on a tool page, to clear the handoff and start another document. This does not delete an editor draft; use Clear draft separately when needed. A failed handoff save keeps you on the current page so you can download a copy. Browser Back/Forward is not the save action for newly staged editor annotations; use the site navigation to carry those changes.
 
+### OCR text extraction
+
+Choose OCR from More tools. **OCR Current Page** recognises the page and copies the result to the clipboard. **OCR Selection** lets you drag a temporary blue box around text; recognition begins when you release it. The box creates no annotation or redaction and does not change the active tool. Escape or Cancel OCR selection dismisses it. Selection coordinates account for zoom, screen density and page rotation.
+
+The default is 300 dpi with automatic page layout. Try 400 dpi for fine text, Drawing labels / scattered text for plans, or Single text block for one continuous block. Large sheets are processed in overlapping sections at the requested DPI rather than shrinking the entire page, with duplicate words in overlapping regions removed by position. Complex drawing layouts can still need a smaller OCR selection; upscaling cannot recover detail absent from the source scan. Recognition uses the selected language and needs the existing external engine/language downloads on first use.
+
 ### Keyboard Shortcuts
 | Key | Action |
 |-----|--------|

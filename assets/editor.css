@@ -121,3 +121,6 @@ body.pdf-studio{display:flex;flex-direction:column}
 .pdf-studio .colour-swatches .colour-swatch:hover{background:var(--swatch-colour);transform:none;border-color:#fff}
 .pdf-studio .colour-swatches .colour-swatch[aria-pressed=true]{outline:2px solid #60a5fa;outline-offset:2px}
 .pdf-studio .colour-swatches .colour-swatch:focus-visible{outline:2px solid #fff;outline-offset:2px}
+
+.pdf-studio .ocr-selection-layer{position:absolute;inset:0;z-index:20;cursor:crosshair;touch-action:none;background:transparent}
+.pdf-studio .ocr-selection-box{position:absolute;border:2px dashed #3b82f6;background:rgba(59,130,246,.1);pointer-events:none;box-sizing:border-box}
