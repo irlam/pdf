@@ -10,7 +10,7 @@
   <!-- Modern, compact UI -->
   <link rel="stylesheet"
         href="/assets/ui.css?v=20261013">
-  <link rel="stylesheet" href="/assets/editor.css?v=20261023-colours">
+  <link rel="stylesheet" href="/assets/editor.css?v=20261023-ocr">
 
   <!-- Tesseract.js for OCR (loaded from CDN) -->
   <script src="https://unpkg.com/tesseract.js@v4.1.4/dist/tesseract.min.js" defer onerror="console.log('OCR: Tesseract.js not available')"></script>
@@ -247,6 +247,13 @@
           <option value="ara">Arabic</option>
         </select>
       </label>
+      <label>Text layout:
+        <select id="ocrLayout"><option value="auto">Automatic page layout</option><option value="11">Drawing labels / scattered text</option><option value="6">Single text block</option></select>
+      </label>
+      <label>Resolution:
+        <select id="ocrDpi"><option value="300">300 dpi — recommended</option><option value="400">400 dpi — fine text</option><option value="200">200 dpi — faster</option></select>
+      </label>
+      <p class="muted">For plans, try Drawing labels. Large sheets are recognised in sections to retain small-text detail.</p>
       <button id="ocrPage" class="btn-primary">OCR Current Page</button>
       <button id="ocrSelection">OCR Selection</button>
       <div id="ocrProgress">
@@ -1565,7 +1572,7 @@ async function initOCR() {
   }
 }
 
-async function performOCR(imageData) {
+async function performOCR(imageData, options = {}) {
   const progress = document.getElementById('ocrProgress');
   const progressFill = document.getElementById('ocrProgressFill');
   const progressText = document.getElementById('ocrProgressText');
@@ -1589,6 +1596,7 @@ async function performOCR(imageData) {
     }
     
     if (progressText) progressText.textContent = 'Recognizing text...';
+    await ocrWorker.setParameters({tessedit_pageseg_mode:String(options.psm||'3'),preserve_interword_spaces:'1',user_defined_dpi:String(options.dpi||300)});
     const result = await ocrWorker.recognize(imageData);
     
     if (progress) progress.classList.remove('visible');
@@ -1611,123 +1619,10 @@ async function performOCR(imageData) {
   }
 }
 
-// OCR current page button
-const ocrPageBtn = document.getElementById('ocrPage');
-if (ocrPageBtn) {
-  ocrPageBtn.onclick = async () => {
-    if (!pdfDocRender) {
-      showError('Please load a PDF first');
-      return;
-    }
-    
-    showLoading('Preparing page for OCR...');
-    
-    // Render current page to canvas at higher resolution for better OCR
-    const page = await pdfDocRender.getPage(currentPageIndex + 1);
-    const scale = 2; // Higher resolution for better OCR
-    const vp = page.getViewport({ scale });
-    
-    const canvas = document.createElement('canvas');
-    canvas.width = vp.width;
-    canvas.height = vp.height;
-    const ctx = canvas.getContext('2d');
-    
-    await page.render({ canvasContext: ctx, viewport: vp }).promise;
-    hideLoading();
-    
-    const ocrResult = await performOCR(canvas);
-    if (ocrResult && ocrResult.text) {
-      // Show OCR result in a modal or copy to clipboard
-      const text = ocrResult.text.trim();
-      if (text) {
-        try {
-          await navigator.clipboard.writeText(text);
-          showSuccess(`OCR complete! ${ocrResult.words?.length || 0} words copied to clipboard.`);
-        } catch (e) {
-          // Fallback: show in alert
-          alert('OCR Result:\n\n' + text);
-        }
-      } else {
-        showWarning('No text detected on this page.');
-      }
-    }
-  };
-}
 
-// OCR selection button - performs OCR on currently selected area
-let ocrSelectionMode = false;
-const ocrSelBtn = document.getElementById('ocrSelection');
-if (ocrSelBtn) {
-  ocrSelBtn.onclick = async () => {
-    if (!pdfDocRender) {
-      showError('Please load a PDF first');
-      return;
-    }
-    
-    // Check if there's a selection (selectedIds has items)
-    if (selectedIds.length === 0) {
-      // No selection - prompt user to draw one
-      showWarning('Draw a selection box on the page first, then click OCR Selection again.');
-      el.tool.value = 'redact'; // Switch to redact tool for drawing boxes
-      contextualizeUI();
-      ocrSelectionMode = true;
-      return;
-    }
-    
-    // Get the bounding box of selected items
-    const gb = groupBox();
-    if (!gb) {
-      showError('Could not determine selection area');
-      return;
-    }
-    
-    showLoading('Preparing selection for OCR...');
-    
-    // Render current page to canvas at higher resolution
-    const page = await pdfDocRender.getPage(currentPageIndex + 1);
-    const scale = 2;
-    const vp = page.getViewport({ scale });
-    
-    const canvas = document.createElement('canvas');
-    canvas.width = vp.width;
-    canvas.height = vp.height;
-    const ctx = canvas.getContext('2d');
-    
-    await page.render({ canvasContext: ctx, viewport: vp }).promise;
-    
-    // Crop to selection area
-    const cropCanvas = document.createElement('canvas');
-    const cropX = Math.round(gb.x * scale * dpr());
-    const cropY = Math.round(gb.y * scale * dpr());
-    const cropW = Math.round(gb.w * scale * dpr());
-    const cropH = Math.round(gb.h * scale * dpr());
-    
-    cropCanvas.width = cropW;
-    cropCanvas.height = cropH;
-    const cropCtx = cropCanvas.getContext('2d');
-    cropCtx.drawImage(canvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
-    
-    hideLoading();
-    
-    const ocrResult = await performOCR(cropCanvas);
-    if (ocrResult && ocrResult.text) {
-      const text = ocrResult.text.trim();
-      if (text) {
-        try {
-          await navigator.clipboard.writeText(text);
-          showSuccess(`OCR complete! Text copied to clipboard.`);
-        } catch (e) {
-          alert('OCR Result:\n\n' + text);
-        }
-      } else {
-        showWarning('No text detected in the selected area.');
-      }
-    }
-    
-    ocrSelectionMode = false;
-  };
-}
 </script>
+
+<script src="/app/ocr-tools.js?v=20261023"></script>
 
 <!-- Shape drawing tools: Box, Line, Arrow, Dimension -->
 <script src="/app/addons-draw.js?v=20261023-solid"></script>
