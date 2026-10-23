@@ -1513,6 +1513,7 @@ async function loadBundledFont(fontName) {
 /* ====== OCR functionality ====== */
 let ocrWorker = null;
 let ocrCurrentLang = null;
+let ocrRunning = false;
 
 function showSuccess(message, duration = 4000) {
   const toast = document.createElement('div');
@@ -1535,22 +1536,27 @@ async function initOCR() {
   if (progress) progress.classList.add('visible');
   if (progressText) progressText.textContent = 'Initializing OCR...';
   
+  let worker = null;
   try {
-    // Tesseract.js v4.x API: createWorker(lang, oem, options)
-    ocrWorker = await Tesseract.createWorker(lang, 1, {
+    // v4 creates the worker first, then loads and initializes its language.
+    worker = await Tesseract.createWorker({
       logger: m => {
         if (m.status && progressText) {
           progressText.textContent = m.status;
         }
-        if (m.progress && progressFill) {
+        if (typeof m.progress === 'number' && progressFill) {
           progressFill.style.width = Math.round(m.progress * 100) + '%';
         }
       }
     });
+    await worker.loadLanguage(lang);
+    await worker.initialize(lang);
+    ocrWorker = worker;
     ocrCurrentLang = lang;
     return ocrWorker;
   } catch (e) {
     const errorMsg = e?.message || String(e) || 'Unknown initialization error';
+    try { if (worker) await worker.terminate(); } catch {}
     showError('Failed to initialize OCR: ' + errorMsg);
     if (progress) progress.classList.remove('visible');
     ocrWorker = null;
@@ -1564,7 +1570,12 @@ async function performOCR(imageData) {
   const progressFill = document.getElementById('ocrProgressFill');
   const progressText = document.getElementById('ocrProgressText');
   const lang = document.getElementById('ocrLang')?.value || 'eng';
-  
+  if (ocrRunning) { showWarning('OCR is already running. Please wait.'); return null; }
+  ocrRunning = true;
+  const buttons = [document.getElementById('ocrPage'), document.getElementById('ocrSelection')].filter(Boolean);
+  buttons.forEach(button => button.disabled = true);
+  if (progress) progress.classList.add('visible');
+  if (progressFill) progressFill.style.width = '0%';
   try {
     // Reinitialize worker if language changed or worker is null
     if (!ocrWorker || ocrCurrentLang !== lang) {
@@ -1593,6 +1604,10 @@ async function performOCR(imageData) {
     ocrWorker = null;
     ocrCurrentLang = null;
     return null;
+  } finally {
+    ocrRunning = false;
+    buttons.forEach(button => button.disabled = false);
+    if (progress) progress.classList.remove('visible');
   }
 }
 
