@@ -160,7 +160,7 @@
   const originalLoad=loadBoth;
   loadBoth=async function(bytes){await originalLoad(bytes);await refreshThumbnails();empty.hidden=true;};
   const originalOverlay=drawOverlay;
-  drawOverlay=function(){originalOverlay();refreshComments();syncTools();};
+  drawOverlay=function(){originalOverlay();drawMeasurementLabels();refreshComments();syncTools();};
   function syncThumbSelection(){thumbs.querySelectorAll('[data-page]').forEach(b=>b.setAttribute('aria-current',String(Number(b.dataset.page)===currentPageIndex)));}
   async function refreshThumbnails(){
     const generation=++thumbGeneration;thumbs.replaceChildren();if(!pdfDocRender)return;
@@ -326,6 +326,52 @@
     let value=0;if(it.type==='area'){for(let i=0;i<points.length;i++){const a=points[i],b=points[(i+1)%points.length];value+=a.x*b.y-b.x*a.y;}value=Math.abs(value)/2*factor*factor;}else for(let i=1;i<points.length;i++)value+=Math.hypot(points[i].x-points[i-1].x,points[i].y-points[i-1].y)*factor;
     return `${value.toFixed(2)} ${it.units}${it.type==='area'?'²':''}`;
   }
+  function measurementLabels(pageIndex){
+    const view=pageViewports[pageIndex];if(!view)return [];
+    const pageW=view.viewport.width/view.pixelRatio,pageH=view.viewport.height/view.pixelRatio;
+    const placed=[],labels=[];
+    const overlaps=(a,b)=>a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
+    for(const it of edits.filter(it=>it.page===pageIndex&&['area','perimeter'].includes(it.type))){
+      const r=it.rectCss,text=`${it.type==='area'?'Area':'Perimeter'}: ${measurement(it)}`;
+      overlayCtx.save();overlayCtx.font='600 13px sans-serif';const width=overlayCtx.measureText(text).width+20;overlayCtx.restore();
+      const w=Math.min(pageW-8,width),h=28;
+      const corners=[{x:r.x,y:r.y},{x:r.x+r.w,y:r.y},{x:r.x+r.w,y:r.y+r.h},{x:r.x,y:r.y+r.h}].map(p=>rotatedPoint(p,it));
+      const left=Math.min(...corners.map(p=>p.x)),top=Math.min(...corners.map(p=>p.y)),right=Math.max(...corners.map(p=>p.x)),bottom=Math.max(...corners.map(p=>p.y));
+      // Reserve space for the rotation circle and all eight resize handles,
+      // even when unselected, so selecting an item does not move its badge.
+      const handles=[{x:r.x+r.w/2-18,y:r.y-38,w:36,h:36},...handlePoints(r).map(p=>({x:p.x-8,y:p.y-8,w:16,h:16}))];
+      const candidates=[{x:left,y:top-44-h},{x:left,y:bottom+12},{x:right+12,y:top},{x:left-w-12,y:top},{x:left+12,y:top+12}];
+      // Try a few extra rows to keep nearby measurement badges apart.
+      for(let i=1;i<=4;i++)candidates.push({x:left,y:bottom+12+i*(h+6)},{x:left,y:top-44-h-i*(h+6)});
+      const boxes=candidates.map(p=>({x:clamp(p.x,4,Math.max(4,pageW-w-4)),y:clamp(p.y,4,Math.max(4,pageH-h-4)),w,h}));
+      const box=boxes.find(b=>![...handles,...placed].some(o=>overlaps(b,o)))||boxes[0];
+      placed.push(box);labels.push({it,text,...box});
+    }
+    return labels;
+  }
+  function drawMeasurementLabels(){
+    if(!viewport)return;
+    overlayCtx.save();overlayCtx.setTransform(1,0,0,1,0,0);overlayCtx.setLineDash([]);overlayCtx.globalAlpha=1;
+    for(const label of measurementLabels(currentPageIndex)){
+      const {x,y,w,h,it,text}=label,ratio=dpr();
+      overlayCtx.fillStyle='#ffffff';overlayCtx.fillRect(x*ratio,y*ratio,w*ratio,h*ratio);
+      overlayCtx.strokeStyle=it.stroke||'#2563eb';overlayCtx.lineWidth=ratio;overlayCtx.strokeRect(x*ratio,y*ratio,w*ratio,h*ratio);
+      overlayCtx.fillStyle='#0f172a';overlayCtx.font=`600 ${13*ratio}px sans-serif`;overlayCtx.textBaseline='middle';overlayCtx.textAlign='left';
+      overlayCtx.fillText(text,(x+10)*ratio,(y+h/2)*ratio,Math.max(1,(w-20)*ratio));
+    }
+    overlayCtx.restore();
+  }
+  async function exportMeasurementLabel(it,page){
+    const label=measurementLabels(it.page).find(label=>label.it===it);if(!label)return;
+    const {x,y,w,h,text}=label;
+    const corners=[{x,y},{x:x+w,y},{x:x+w,y:y+h},{x,y:y+h}].map(p=>cssToPdf(p,it.page));
+    page.drawSvgPath(svgPath(corners,true),{color:PDFLib.rgb(1,1,1),borderColor:hexToRgb(it.stroke||'#2563eb'),borderWidth:.7});
+    const font=await pdfDocWriter.embedFont(PDFLib.StandardFonts.HelveticaBold);
+    const factor=Math.hypot(corners[1].x-corners[0].x,corners[1].y-corners[0].y)/w;
+    const size=Math.min(13*factor,(w-20)*factor/font.widthOfTextAtSize(text,1));
+    const position=cssToPdf({x:x+10,y:y+18.5},it.page),angle=Math.atan2(corners[1].y-corners[0].y,corners[1].x-corners[0].x)*180/Math.PI;
+    page.drawText(text,{x:position.x,y:position.y,size,font,color:hexToRgb('#0f172a'),rotate:PDFLib.degrees(angle)});
+  }
   function cloudPoints(r){const points=[];const sides=[[r.x,r.y,r.x+r.w,r.y],[r.x+r.w,r.y,r.x+r.w,r.y+r.h],[r.x+r.w,r.y+r.h,r.x,r.y+r.h],[r.x,r.y+r.h,r.x,r.y]];
     for(const [x1,y1,x2,y2] of sides){const length=Math.hypot(x2-x1,y2-y1),count=Math.max(1,Math.ceil(length/20)),dx=(x2-x1)/count,dy=(y2-y1)/count,nx=dy/Math.max(length/count,1),ny=-dx/Math.max(length/count,1);for(let i=0;i<count;i++)for(let j=0;j<8;j++){const t=j/8;points.push({x:x1+dx*(i+t)+nx*5*Math.sin(Math.PI*t),y:y1+dy*(i+t)+ny*5*Math.sin(Math.PI*t)});}}
     return points;
@@ -338,7 +384,7 @@
     overlayCtx.strokeStyle=it.stroke||'#2563eb';overlayCtx.fillStyle=it.stroke||'#2563eb';overlayCtx.lineWidth=(it.width||2)*dpr();overlayCtx.setLineDash(it.dashed?[8*dpr(),6*dpr()]:[]);
     if(it.type==='highlight'){overlayCtx.globalAlpha=it.opacity||.3;overlayCtx.fillRect(rd.x,rd.y,rd.w,rd.h);}
     if(it.type==='ellipse'){overlayCtx.beginPath();overlayCtx.ellipse(cx,cy,Math.max(.5,rd.w/2),Math.max(.5,rd.h/2),0,0,Math.PI*2);overlayCtx.stroke();}
-    if(['pen','cloud','area','perimeter'].includes(it.type)){const pts=it.type==='cloud'?cloudPoints(r):absolutePoints(it);overlayCtx.beginPath();pts.forEach((p,i)=>{if(i)overlayCtx.lineTo(p.x*dpr(),p.y*dpr());else overlayCtx.moveTo(p.x*dpr(),p.y*dpr());});if(['cloud','area'].includes(it.type))overlayCtx.closePath();if(it.type==='area'){overlayCtx.save();overlayCtx.globalAlpha=.12;overlayCtx.fill();overlayCtx.restore();}overlayCtx.stroke();if(['area','perimeter'].includes(it.type)){overlayCtx.setLineDash([]);overlayCtx.font='600 14px sans-serif';overlayCtx.textBaseline='bottom';overlayCtx.fillText(measurement(it),rd.x,rd.y-5*dpr());}}
+    if(['pen','cloud','area','perimeter'].includes(it.type)){const pts=it.type==='cloud'?cloudPoints(r):absolutePoints(it);overlayCtx.beginPath();pts.forEach((p,i)=>{if(i)overlayCtx.lineTo(p.x*dpr(),p.y*dpr());else overlayCtx.moveTo(p.x*dpr(),p.y*dpr());});if(['cloud','area'].includes(it.type))overlayCtx.closePath();if(it.type==='area'){overlayCtx.save();overlayCtx.globalAlpha=.12;overlayCtx.fill();overlayCtx.restore();}overlayCtx.stroke();}
     if(it.type==='stamp'){overlayCtx.strokeRect(rd.x,rd.y,rd.w,rd.h);overlayCtx.font=`700 ${Math.max(12,Math.min(28,rd.h*.45))}px sans-serif`;overlayCtx.textAlign='center';overlayCtx.textBaseline='middle';overlayCtx.fillText(it.text,cx,cy,Math.max(1,rd.w-12));}
     if(it.type==='callout'){overlayCtx.fillStyle='#ffffff';overlayCtx.fillRect(rd.x,rd.y,rd.w,rd.h);overlayCtx.strokeRect(rd.x,rd.y,rd.w,rd.h);overlayCtx.fillStyle=it.stroke;overlayCtx.font=`600 ${12*dpr()}px sans-serif`;overlayCtx.textBaseline='top';const lines=wrapText(`${it.number}. ${it.text}`,Math.max(20,rd.w-16*dpr()),t=>overlayCtx.measureText(t).width);lines.slice(0,Math.max(1,Math.floor((rd.h-12*dpr())/(16*dpr())))).forEach((line,i)=>overlayCtx.fillText(line,rd.x+8*dpr(),rd.y+(6+i*16)*dpr(),rd.w-16*dpr()));}
     if(it.type==='signature'){const img=getImg(it.imageUrl);if(img&&img.complete)overlayCtx.drawImage(img,rd.x,rd.y,rd.w,rd.h);}
@@ -373,7 +419,7 @@
     const opts={borderColor:color,borderWidth:it.width||2,dashArray:it.dashed?[8,6]:undefined};
     if(['pen','cloud','area','perimeter'].includes(it.type)){
       const points=pdfPoints(it.type==='cloud'?cloudPoints(r):absolutePoints(it),it);page.drawSvgPath(svgPath(points,['cloud','area'].includes(it.type)),{...opts,...(it.type==='area'?{color,opacity:.12}:{} )});
-      if(['area','perimeter'].includes(it.type)){const font=await pdfDocWriter.embedFont(PDFLib.StandardFonts.Helvetica);const p=cssToPdf({x:r.x,y:r.y},it.page);page.drawText(measurement(it).replace('²','2'),{x:p.x,y:p.y+5,size:12,font,color});}return;
+      if(['area','perimeter'].includes(it.type))await exportMeasurementLabel(it,page);return;
     }
     const corners=pdfPoints([{x:r.x,y:r.y},{x:r.x+r.w,y:r.y},{x:r.x+r.w,y:r.y+r.h},{x:r.x,y:r.y+r.h}],it);
     if(it.type==='highlight'){page.drawSvgPath(svgPath(corners,true),{color,opacity:it.opacity||.3});return;}
