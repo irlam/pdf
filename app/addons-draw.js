@@ -229,15 +229,17 @@
       overlayCtx.fillRect(rd.x, rd.y, rd.w, rd.h);
       if (it.width>0){
         overlayCtx.lineWidth = it.width*dpr();
-        if (it.dashed) overlayCtx.setLineDash([8*dpr(), 6*dpr()]);
+        overlayCtx.setLineDash(it.dashed ? [8*dpr(), 6*dpr()] : []);
         overlayCtx.strokeStyle = it.stroke || '#000';
         overlayCtx.strokeRect(rd.x, rd.y, rd.w, rd.h);
       }
       overlayCtx.restore();
       if (selected){
+        overlayCtx.save();
         overlayCtx.lineWidth = 2*dpr();
         overlayCtx.strokeStyle = "rgba(59,130,246,0.95)";
         overlayCtx.strokeRect(rd.x, rd.y, rd.w, rd.h);
+        overlayCtx.restore();
       }
       return;
     }
@@ -248,10 +250,11 @@
       const b = { x: rd.x + it.b.x*dpr(), y: rd.y + it.b.y*dpr() };
       overlayCtx.save();
       overlayCtx.lineWidth = Math.max(1, (it.width||2)*dpr());
-      if (it.dashed) overlayCtx.setLineDash([8*dpr(), 6*dpr()]);
+      overlayCtx.setLineDash(it.dashed ? [8*dpr(), 6*dpr()] : []);
       overlayCtx.strokeStyle = it.stroke || '#00f';
       overlayCtx.beginPath(); overlayCtx.moveTo(a.x, a.y); overlayCtx.lineTo(b.x, b.y); overlayCtx.stroke();
 
+      overlayCtx.setLineDash([]); // Arrowheads and dimension ticks stay solid.
       if (it.type!=='line'){ // arrow heads / dimension ticks + label
         const drawArrowHead = (from,to)=>{
           const ang = Math.atan2(to.y-from.y, to.x-from.x);
@@ -291,10 +294,12 @@
       overlayCtx.restore();
 
       if (selected){
+        overlayCtx.save();
         overlayCtx.lineWidth = 1*dpr();
         overlayCtx.setLineDash([4*dpr(),3*dpr()]);
         overlayCtx.strokeStyle = "rgba(59,130,246,0.8)";
         overlayCtx.strokeRect(rd.x, rd.y, rd.w, rd.h);
+        overlayCtx.restore();
       }
       return;
     }
