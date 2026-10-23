@@ -132,7 +132,7 @@ function updateSizes(w,h){
 async function loadPdf(buf){
   pdfBuf = buf;
   pdfWrite = await PDFLib.PDFDocument.load(buf);
-  pdfView  = await pdfjsLib.getDocument({data:buf}).promise;
+  pdfView  = await pdfjsLib.getDocument({data:new Uint8Array(buf).slice()}).promise;
   pageCount = pdfView.numPages; pageIndex = clamp(pageIndex,0,pageCount-1);
   cropCss = null;
   await render(true);
@@ -391,11 +391,13 @@ async function applyCropBox(allPages=false){
 
       const box = { x:left, y:bottom, width:right-left, height:top-bottom };
       if (![box.x,box.y,box.width,box.height].every(Number.isFinite)) continue;
-      pg.setCropBox(box);
+      pg.setCropBox(box.x,box.y,box.width,box.height);
     }catch(err){ console.warn('setCropBox failed on page', i+1, err); }
   }
 
   const bytes = await pdfWrite.save();
+  await PdfSession.save(bytes);
+  await loadPdf(bytes.slice().buffer);
   const blob = new Blob([bytes], { type:'application/pdf' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -451,6 +453,8 @@ async function hardCrop(allPages=false){
   }
 
   const bytes = await out.save();
+  await PdfSession.save(bytes);
+  await loadPdf(bytes.slice().buffer);
   const blob = new Blob([bytes],{type:'application/pdf'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
   a.download = allPages ? 'hardcrop_all.pdf' : 'hardcrop.pdf';
@@ -458,20 +462,24 @@ async function hardCrop(allPages=false){
 }
 
 /* ---------- UI wiring ---------- */
-el.file.onchange = async (e)=>{ const f=e.target.files?.[0]; if(!f) return; await loadPdf(await f.arrayBuffer()); };
+let cropWork=Promise.resolve();
+function runCrop(fn){cropWork=cropWork.then(fn).catch(e=>{console.error(e);alert(e.message||'Crop failed');});return cropWork;}
+el.file.onchange = (e)=>runCrop(async()=>{ const f=e.target.files?.[0]; if(!f) return; await loadPdf(await f.arrayBuffer()); await PdfSession.save(await pdfWrite.save(),f.name); });
 el.prev.onclick = async ()=>{ if (!pdfView) return; pageIndex = clamp(pageIndex-1,0,pageCount-1); cropCss=null; await render(true); };
 el.next.onclick = async ()=>{ if (!pdfView) return; pageIndex = clamp(pageIndex+1,0,pageCount-1); cropCss=null; await render(true); };
-el.setCrop.onclick = ()=>applyCropBox(false);
-el.setCropAll.onclick = ()=>applyCropBox(true);
-el.resetCrop.onclick = async ()=>{
+el.setCrop.onclick = ()=>runCrop(()=>applyCropBox(false));
+el.setCropAll.onclick = ()=>runCrop(()=>applyCropBox(true));
+el.resetCrop.onclick = ()=>runCrop(async()=>{
   if (!pdfWrite){ alert('Open a PDF'); return; }
   const pg = pdfWrite.getPage(pageIndex);
-  pg.setCropBox({x:0,y:0,width:pg.getWidth(),height:pg.getHeight()});
-  const bytes = await pdfWrite.save(); const blob = new Blob([bytes],{type:'application/pdf'});
+  pg.setCropBox(0,0,pg.getWidth(),pg.getHeight());
+  const bytes = await pdfWrite.save(); await PdfSession.save(bytes); await loadPdf(bytes.slice().buffer); const blob = new Blob([bytes],{type:'application/pdf'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='crop_reset.pdf'; a.click();
-};
-el.hardCrop.onclick = ()=>hardCrop(false);
-el.hardCropAll.onclick = ()=>hardCrop(true);
+});
+el.hardCrop.onclick = ()=>runCrop(()=>hardCrop(false));
+el.hardCropAll.onclick = ()=>runCrop(()=>hardCrop(true));
 </script>
+<script src="/app/pdf-session.js?v=20261023"></script>
+<script>PdfSession.connect({hasDocument:()=>!!pdfWrite||el.file.files.length>0,load:record=>loadPdf(record.bytes.slice().buffer),read:async()=>{await cropWork;return pdfWrite?{bytes:await pdfWrite.save(),name:PdfSession.name||'document.pdf'}:null;}});</script>
 </body>
 </html>

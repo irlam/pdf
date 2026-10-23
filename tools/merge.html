@@ -273,6 +273,7 @@ async function mergePdfs() {
     
     updateProgress(95, 'Saving merged PDF...');
     const mergedBytes = await mergedPdf.save();
+    await PdfSession.save(mergedBytes,'merged.pdf');
     
     // Download
     const blob = new Blob([mergedBytes], { type: 'application/pdf' });
@@ -321,5 +322,7 @@ clearBtn.addEventListener('click', () => {
 // Initial UI
 updateUI();
 </script>
+<script src="/app/pdf-session.js?v=20261023"></script>
+<script>PdfSession.connect({load:record=>addPdfFiles([PdfSession.file(record)])});</script>
 </body>
 </html>

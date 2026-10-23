@@ -49,6 +49,14 @@ This tool provides a comprehensive suite of PDF editing and manipulation feature
 6. **Save/Download**: Use the top **Download PDF** button, or expand **Apply / server versions** to apply annotations or save on your server. Applying permanently embeds annotations and resets annotation history.
 7. **Recover**: **Restore draft** reopens the latest editable draft. Export retains a pre-apply draft, so restoring it can recover annotations. The draft still contains the original document, including content later redacted; use **Clear draft** in Apply / server versions when finished.
 
+### Continue with the same PDF
+
+Use the site navigation to move between Editor, Crop, Split, Convert, Print and Exports without choosing the file again. The current PDF is kept in browser storage for this tab, with a 100 MB handoff limit; it is not uploaded to a server. Reloading a tool also reopens it. Merge starts with the current PDF and makes its completed merged result available to the other tools. Completed image/text-to-PDF conversions also become the current document.
+
+When leaving the editor, staged annotations are applied to the PDF carried to the next tool. The pre-apply editable draft remains available under **Drafts → Restore draft**; returning from Crop opens the cropped PDF rather than overwriting it with an older draft. Applying or resetting a crop updates the current document and still offers the normal download. A crop selection must be applied before switching. Hard Crop (page) produces a document containing that page, matching its download.
+
+Choose **Close current PDF** in the editor’s Drafts menu, or beside the filename on a tool page, to clear the handoff and start another document. This does not delete an editor draft; use Clear draft separately when needed. A failed handoff save keeps you on the current page so you can download a copy. Browser Back/Forward is not the save action for newly staged editor annotations; use the site navigation to carry those changes.
+
 ### Keyboard Shortcuts
 | Key | Action |
 |-----|--------|

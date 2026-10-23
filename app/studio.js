@@ -231,11 +231,14 @@
   }
   draftGet().then(d=>{restoreButton.hidden=!d;if(d&&!pdfDocWriter)draftStatus.textContent=`Draft available: ${d.name}`;}).catch(()=>{draftStatus.textContent='Browser draft storage unavailable';});
   const openFile=handlePdfFile;
-  handlePdfFile=async function(file){
+  let openingDocument=Promise.resolve();
+  handlePdfFile=function(file,{sessionRestore=false}={}){
+    openingDocument=(async()=>{
     if(!file||busy)return;
     if(pdfDocWriter&&dirty){await saveDraft();if(dirty&&!confirm('Current draft could not be saved. Open another document anyway?'))return;}
     clearTimeout(saveTimer);cancelGesture();const opened=await openFile(file);
-    if(opened&&pdfDocWriter){fileName=file.name;documentName.textContent=fileName;markDirty();restoreButton.hidden=false;}
+    if(opened&&pdfDocWriter){fileName=file.name;documentName.textContent=fileName;if(sessionRestore){dirty=false;clearTimeout(saveTimer);lastState=stateSignature();}else{markDirty();restoreButton.hidden=false;}try{await PdfSession.save(await pdfDocWriter.save(),fileName);}catch(e){showWarning(e.message);}}
+    })();return openingDocument;
   };
   window.addEventListener('mouseup',()=>{if(pdfDocWriter&&!busy&&stateSignature()!==lastState){lastState=stateSignature();markDirty();}});
   window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue='';}});
@@ -413,7 +416,7 @@
     }finally{await renderer.destroy();}
   }
   const apply=applyEditsToPdf;
-  applyEditsToPdf=async function(){
+  applyEditsToPdf=async function(options={}){
     if(!pdfDocWriter||busy)return;busy=true;clearTimeout(saveTimer);
     // Save the pre-apply draft, so editable annotations can be recovered.
     busy=false;await saveDraft();busy=true;
@@ -423,7 +426,7 @@
       const redactions=edits.filter(it=>it.type==='redact').map(it=>{const r=it.rectCss;return {...it,pdfCorners:pdfPoints([{x:r.x,y:r.y},{x:r.x+r.w,y:r.y},{x:r.x+r.w,y:r.y+r.h},{x:r.x,y:r.y+r.h}],it)};});
       for(const it of edits.filter(it=>TYPES.has(it.type)))await exportMarkup(it);
       edits=edits.filter(it=>!TYPES.has(it.type));
-      await apply();
+      await apply(options);
       // Flatten only after every staged annotation is applied, so a redaction
       // also removes staged text or images underneath it.
       if(redactions.length){await secureRedactions(redactions);await loadBoth(await pdfDocWriter.save());}
@@ -436,6 +439,18 @@
   el.apply.onclick=async()=>{try{await applyEditsToPdf();}catch{}};
   const serverSave=el.save.onclick;el.save.onclick=async()=>{try{if(!pdfDocWriter)return showWarning('Open a PDF first.');await serverSave();}catch(e){showFailure(e);}};
   function showFailure(e){console.error(e);showError(e.message||'The operation could not be completed.');}
+  PdfSession.connect({
+    hasDocument:()=>!!pdfDocWriter||fileInput.files.length>0,
+    load:record=>handlePdfFile(PdfSession.file(record),{sessionRestore:true}),
+    discard:()=>{dirty=false;clearTimeout(saveTimer);},
+    read:async()=>{
+      await openingDocument;
+      if(busy||saving)throw new Error('Wait for the current PDF operation to finish before switching tools.');
+      if(!pdfDocWriter)return null;
+      if(edits.length||pageRotDelta.some(Boolean))await applyEditsToPdf({confirm:false});
+      const bytes=await pdfDocWriter.save();dirty=false;lastState=stateSignature();return {bytes,name:fileName};
+    }
+  });
   // Keep view-only controls from marking drafts dirty; actual state changes are sampled.
   setInterval(()=>{if(!pdfDocWriter||busy||saving)return;const state=stateSignature();if(state!==lastState){lastState=state;markDirty();}},1500);
 })();
