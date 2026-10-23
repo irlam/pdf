@@ -124,3 +124,12 @@ body.pdf-studio{display:flex;flex-direction:column}
 
 .pdf-studio .ocr-selection-layer{position:absolute;inset:0;z-index:20;cursor:crosshair;touch-action:none;background:transparent}
 .pdf-studio .ocr-selection-box{position:absolute;border:2px dashed #3b82f6;background:rgba(59,130,246,.1);pointer-events:none;box-sizing:border-box}
+
+.ocr-results-layer{position:absolute;inset:0;z-index:15;pointer-events:none}
+.pdf-studio .ocr-word{position:absolute;pointer-events:auto;min-width:0;min-height:0;padding:0;border:1px solid #2563eb80;background:#3b82f60a;border-radius:2px;cursor:text}
+.pdf-studio .ocr-word:hover,.pdf-studio .ocr-word:focus-visible{background:#3b82f630;outline:2px solid #2563eb}
+#ocrTextDialog{width:min(420px,90vw);border:1px solid #cbd5e1;border-radius:12px;padding:22px;color:#e2e8f0;background:#182336;box-shadow:0 20px 60px #0004}
+#ocrTextDialog::backdrop{background:#0f172a66}
+#ocrTextDialog label{display:block;margin:12px 0}
+#ocrReplacementText{display:block;width:100%;box-sizing:border-box;padding:9px;margin-top:6px}
+.ocr-dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}

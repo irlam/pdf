@@ -1,7 +1,43 @@
-/* OCR image preparation and a temporary, non-editing selection overlay. */
+/* High-resolution OCR, temporary word boxes and staged text replacements. */
 (() => {
   const pageButton=document.getElementById('ocrPage'),selectionButton=document.getElementById('ocrSelection');
   let active=false,selectionLayer=null;
+  let recognised=[],recognisedDocument=null,recognisedPage=-1,resultLayer=null;
+  const editButton=document.getElementById("ocrEditText");
+  const dialog=document.getElementById("ocrTextDialog"),input=document.getElementById("ocrReplacementText");
+  let editing=null;
+  function hideResults(){resultLayer?.remove();resultLayer=null;}
+  function showResults(){
+    hideResults();
+    if(!editButton.checked||recognisedDocument!==pdfDocRender||recognisedPage!==currentPageIndex||el.tool.value!=="ocr")return;
+    resultLayer=document.createElement("div");resultLayer.className="ocr-results-layer";
+    for(const word of recognised){
+      const points=word.corners.map(p=>viewport.convertToViewportPoint(p.x,p.y)),xs=points.map(p=>p[0]/dpr()),ys=points.map(p=>p[1]/dpr());
+      const w=Math.hypot(xs[1]-xs[0],ys[1]-ys[0]),h=Math.hypot(xs[3]-xs[0],ys[3]-ys[0]),angle=Math.atan2(ys[1]-ys[0],xs[1]-xs[0])*180/Math.PI;
+      const rect={x:(xs[0]+xs[2]-w)/2,y:(ys[0]+ys[2]-h)/2,w,h};
+      const button=document.createElement("button");button.type="button";button.className="ocr-word";button.setAttribute("aria-label","Edit recognised text: "+word.text);button.title=word.text+" — click to edit";
+      Object.assign(button.style,{left:rect.x+"px",top:rect.y+"px",width:Math.max(8,rect.w)+"px",height:Math.max(8,rect.h)+"px",transform:"rotate("+angle+"deg)"});
+      button.onclick=()=>{editing={word,rect,angle,document:pdfDocRender,page:currentPageIndex};const item=edits.find(it=>it.id===word.editId);input.value=item?.text??word.text;document.getElementById("ocrTextColour").value=item?.color||"#000000";document.getElementById("ocrCoverColour").value=item?.cover||"#ffffff";dialog.showModal();input.focus();input.select();};resultLayer.append(button);
+    }
+    el.pageLayer.append(resultLayer);
+  }
+  editButton.onchange=showResults;
+  document.getElementById("ocrTextCancel").onclick=()=>dialog.close();
+  document.getElementById("ocrTextForm").onsubmit=async event=>{
+    event.preventDefault();if(!editing)return;
+    if(editing.document!==pdfDocRender||editing.page!==currentPageIndex){dialog.close();return showWarning("The PDF changed. Run OCR again.");}
+    const pending=editing,text=input.value.replace(/[\r\n]+/g," ");
+    try{const font=await pdfDocWriter.embedFont(PDFLib.StandardFonts.Helvetica);font.encodeText(text);}catch{showWarning("This text needs a font that supports its characters. This replacement tool currently supports Western European text.");return;}
+    if(!dialog.open||editing!==pending||pending.document!==pdfDocRender||pending.page!==currentPageIndex)return;
+    const existing=edits.find(it=>it.id===editing.word.editId);
+    pushHistory();
+    const item=existing||{id:nextId++,type:"text",ocrText:true,page:currentPageIndex,rectCss:{...editing.rect},rot:editing.angle,fontFamily:"Helvetica",align:"left"};
+    Object.assign(item,{text,color:document.getElementById("ocrTextColour").value,cover:document.getElementById("ocrCoverColour").value});
+    if(!existing)edits.push(item);editing.word.editId=item.id;selectedIds=[item.id];dialog.close();drawOverlay();showResults();showSuccess("Text replacement staged. Use Select to move it, or Undo to revert.");
+  };
+  const render=renderPage;renderPage=async function(...args){hideResults();await render(...args);showResults();};
+  el.tool.addEventListener("change",showResults);
+  el.file.addEventListener("change",()=>{recognised=[];hideResults();dialog.close();});
   function cancelSelection(){selectionLayer?.remove();selectionLayer=null;selectionButton.textContent='OCR Selection';selectionButton.setAttribute('aria-pressed','false');}
   function controls(disabled){pageButton.disabled=disabled;selectionButton.disabled=disabled;}
   async function prepareImage(selection){
@@ -31,7 +67,7 @@
     await plan.page.render({canvasContext:context,viewport:plan.vp,transform:[1,0,0,1,-tile.x,-tile.y],background:'#ffffff'}).promise;
     return canvas;
   }
-  function tileText(result,tile,seen){
+  function tileText(result,tile,seen,plan){
     if(!result.lines?.length)return result.text||'';
     const lines=[];
     for(const line of result.lines){
@@ -39,7 +75,7 @@
       for(const word of line.words||[]){
         const box={x0:word.bbox.x0+tile.x,y0:word.bbox.y0+tile.y,x1:word.bbox.x1+tile.x,y1:word.bbox.y1+tile.y},key=word.text.trim().toLowerCase();
         const duplicate=seen.some(old=>{if(old.tile===tile||old.key!==key)return false;const overlap=Math.max(0,Math.min(old.box.x1,box.x1)-Math.max(old.box.x0,box.x0))*Math.max(0,Math.min(old.box.y1,box.y1)-Math.max(old.box.y0,box.y0));return overlap>.5*Math.min((box.x1-box.x0)*(box.y1-box.y0),(old.box.x1-old.box.x0)*(old.box.y1-old.box.y0));});
-        if(!duplicate){seen.push({key,box,tile});words.push(word.text);}
+        if(!duplicate){seen.push({key,box,tile,text:word.text,corners:[[box.x0,box.y0],[box.x1,box.y0],[box.x1,box.y1],[box.x0,box.y1]].map(p=>{const q=plan.vp.convertToPdfPoint(...p);return {x:q[0],y:q[1]};})});words.push(word.text);}
       }
       if(words.length)lines.push(words.join(' '));
     }
@@ -51,6 +87,7 @@
     active=true;cancelSelection();controls(true);let canvas;
     try{
       showLoading(selection?'Preparing selected area for OCR…':'Preparing high-resolution page for OCR…');
+      const sourceDocument=pdfDocRender,sourcePage=currentPageIndex;
       const plan=await prepareImage(selection),parts=[],seen=[];let words=0;
       const layout=document.getElementById('ocrLayout').value;
       const psm=layout==='auto'?(selection?'11':'3'):layout;
@@ -60,9 +97,11 @@
         const result=await performOCR(canvas,{psm,dpi:plan.dpi});controls(true);
         canvas.width=canvas.height=1;canvas=null;if(!result)return;
         words+=result.words?.length||0;
-        parts.push(plan.tiles.length===1?result.text:tileText(result,plan.tiles[i],seen));
+        const sectionText=tileText(result,plan.tiles[i],seen,plan);
+        parts.push(plan.tiles.length===1?result.text:sectionText);
       }
       const text=parts.filter(Boolean).join('\n').trim();if(!text){showWarning('No text detected. Try Drawing labels for scattered text, or select a smaller area.');return;}
+      if(sourceDocument===pdfDocRender&&sourcePage===currentPageIndex){recognised=seen;recognisedDocument=sourceDocument;recognisedPage=sourcePage;showResults();}
       try{await navigator.clipboard.writeText(text);showSuccess(`OCR complete! ${plan.tiles.length>1?seen.length:words} words copied to clipboard.`);}catch{alert('OCR Result:\n\n'+text);}
     }catch(error){console.error(error);showError('OCR failed: '+(error.message||error));}
     finally{if(canvas)canvas.width=canvas.height=1;hideLoading();controls(false);active=false;}
