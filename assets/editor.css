@@ -113,3 +113,11 @@ body.pdf-studio{display:flex;flex-direction:column}
 }
 
 .pdf-studio .panel-heading .panel-close{flex:none;min-height:24px;width:24px;padding:0;font-size:18px}
+
+.pdf-studio .colour-presets{margin:4px 0 12px}
+.pdf-studio .colour-presets-title{display:block;margin-bottom:6px;font-size:10px;color:#94a3b8}
+.pdf-studio .colour-swatches{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:5px}
+.pdf-studio .colour-swatches .colour-swatch{width:100%;height:22px;min-height:22px;min-width:0;margin:0;padding:0;border:1px solid #738097;border-radius:4px;background:var(--swatch-colour);box-shadow:none}
+.pdf-studio .colour-swatches .colour-swatch:hover{background:var(--swatch-colour);transform:none;border-color:#fff}
+.pdf-studio .colour-swatches .colour-swatch[aria-pressed=true]{outline:2px solid #60a5fa;outline-offset:2px}
+.pdf-studio .colour-swatches .colour-swatch:focus-visible{outline:2px solid #fff;outline-offset:2px}
