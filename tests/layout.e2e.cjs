@@ -1,0 +1,34 @@
+const {chromium}=require('playwright');
+const fs=require('fs'),http=require('http'),path=require('path'),assert=require('assert/strict'),os=require('os');
+const root=path.resolve(__dirname,'..'),output=fs.mkdtempSync(path.join(os.tmpdir(),'pdf-layout-'));
+let server,browser;
+(async()=>{
+ server=http.createServer((req,res)=>{try{const file=path.join(root,decodeURIComponent(req.url.split('?')[0]));res.setHeader('Content-Type',file.endsWith('.js')?'application/javascript':file.endsWith('.css')?'text/css':file.endsWith('.svg')?'image/svg+xml':file.endsWith('.html')?'text/html':'application/octet-stream');res.end(fs.readFileSync(file));}catch{res.writeHead(404);res.end();}});await new Promise(r=>server.listen(0,'127.0.0.1',r));
+ browser=await chromium.launch({...(process.env.PDF_STUDIO_BROWSER_EXECUTABLE?{executablePath:process.env.PDF_STUDIO_BROWSER_EXECUTABLE}:{}),args:['--no-sandbox','--disable-dev-shm-usage'],headless:true});
+ const p=await browser.newPage({viewport:{width:1357,height:574}}),errors=[];p.on('pageerror',e=>errors.push(e.message));await p.route('https://unpkg.com/**',r=>r.abort());
+ await p.goto(`http://127.0.0.1:${server.address().port}/index.html`);
+ assert.equal(await p.locator('#sidebar').isVisible(),false,'properties start closed');
+ const bytes=await p.evaluate(async()=>{const d=await PDFLib.PDFDocument.create();const page=d.addPage([1200,800]);page.drawRectangle({x:40,y:40,width:1120,height:720,borderColor:PDFLib.rgb(.2,.3,.5),borderWidth:2});page.drawText('LEIGH INFIRMARY / DRAWING REVIEW',{x:70,y:720,size:24});for(let i=0;i<8;i++)page.drawLine({start:{x:70+i*140,y:90},end:{x:70+i*140,y:660},thickness:2,color:PDFLib.rgb(.65,.7,.8)});return Array.from(await d.save());});
+ await p.locator('#file').setInputFiles({name:'7304-FWP-B1-01-DR-A-22201-C3-REVIEW-DRAWING-LONG-FILENAME.pdf',mimeType:'application/pdf',buffer:Buffer.from(bytes)});
+ await p.waitForFunction(()=>pageCount===1&&document.querySelectorAll('.thumbnail').length===1);
+ const metrics=()=>p.locator('#scroller').evaluate(e=>({width:e.clientWidth,height:e.clientHeight}));const normal=await metrics();assert.ok(normal.width>1100&&normal.height>320,JSON.stringify(normal));
+ const open=await p.getByRole('button',{name:'Open PDF',exact:true}).boundingBox(),download=await p.locator('#download').boundingBox();assert.ok(Math.abs(open.y-download.y)<5,'file toolbar stays on one row at laptop width');
+ assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+ await p.getByRole('button',{name:'Fit page',exact:true}).click();await p.waitForFunction(()=>fitMode==='page'&&el.pdfCanvas.clientHeight<=el.scroller.clientHeight);
+ await p.evaluate(()=>renderPage(currentPageIndex));await p.screenshot({path:path.join(output,'laptop.png')});
+ await p.getByRole('button',{name:'Focus PDF',exact:true}).click();await p.waitForFunction(()=>document.body.classList.contains('pdf-focus'));const focus=await metrics();assert.ok(focus.width>normal.width&&focus.height>normal.height,'focus expands both dimensions');
+ assert.equal(await p.locator('.tool-strip').isVisible(),false);await p.evaluate(()=>renderPage(currentPageIndex));await p.screenshot({path:path.join(output,'focus.png')});
+ await p.getByRole('button',{name:'Exit focus',exact:true}).click();assert.equal(await p.locator('#sidebar').isVisible(),false,'exit restores prior panels');
+ await p.getByRole('button',{name:'Fit width',exact:true}).click();await p.waitForFunction(()=>fitMode==='width'&&el.pdfCanvas.clientWidth>=el.scroller.clientWidth-18);
+ await p.locator('.more-tools').selectOption('cloud');assert.equal(await p.locator('#sidebar').isVisible(),true,'advanced tools expose properties');assert.equal(await p.locator('#tool').inputValue(),'cloud');
+ await p.getByRole('button',{name:'Close',exact:true}).click();
+ // Fit respects intrinsic page rotation as well as the available height.
+ await p.evaluate(async()=>{pdfDocWriter.getPage(0).setRotation(PDFLib.degrees(90));await loadBoth(await pdfDocWriter.save());});await p.getByRole('button',{name:'Fit page',exact:true}).click();await p.waitForFunction(()=>el.pdfCanvas.clientHeight<=el.scroller.clientHeight&&el.pdfCanvas.clientWidth<=el.scroller.clientWidth);
+ await p.setViewportSize({width:390,height:844});await p.waitForFunction(()=>el.pdfCanvas.clientHeight<=el.scroller.clientHeight);
+ assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'mobile page does not overflow horizontally');
+ await p.getByRole('button',{name:'Properties',exact:true}).click();const side=await p.locator('#sidebar').boundingBox();assert.ok(side.x>=0&&side.x+side.width<=390,'mobile properties remain within viewport');await p.getByRole('button',{name:'Close',exact:true}).click();
+ await p.getByRole('button',{name:'Pages',exact:true}).click();await p.waitForFunction(()=>document.querySelector('#pagesPanel').getBoundingClientRect().x>=0);const pages=await p.locator('#pagesPanel').boundingBox();assert.ok(pages.x>=0&&pages.x+pages.width<=390);await p.getByRole('button',{name:'Close pages',exact:true}).click();
+ await p.waitForFunction(()=>document.querySelector('#pagesPanel').getBoundingClientRect().right<=0);await p.evaluate(()=>renderPage(currentPageIndex));await p.screenshot({path:path.join(output,'mobile.png')});
+ assert.equal(await p.locator('link[rel=icon]').getAttribute('href'),'/favicon.svg?v=20261023');assert.equal((await p.request.get(new URL('/favicon.svg',p.url()).href)).status(),200);assert.equal((await p.request.get(new URL('/favicon.ico',p.url()).href)).status(),200);
+ assert.deepEqual(errors,[]);console.log('PASS: laptop viewport',normal,'focus viewport',focus,'fit page/width, rotated fit, advanced tools, panels on mobile, favicon and no page errors.');console.log('Screenshots:',output);
+})().catch(e=>{console.error(e);process.exitCode=1;}).finally(async()=>{if(browser)await browser.close();if(server)server.close();});

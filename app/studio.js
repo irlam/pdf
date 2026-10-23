@@ -18,11 +18,13 @@
   const button = (text, fn, attrs={}) => { const b=node('button',{type:'button',...attrs},text); b.addEventListener('click',fn); return b; };
   const section = (title,id) => {const s=node('section',{className:'sidebar-section',id});s.append(node('h4',{},title));return s;};
   const sidebar=$('sidebar'), viewer=document.querySelector('.viewer-area');
+  sidebar.classList.add('collapsed');
   sidebar.querySelectorAll('h4').forEach(h=>h.textContent=h.textContent.replace(/^[^A-Za-z]+/u,''));
   const toolbar=document.querySelector('.top-toolbar'), status=document.querySelector('.status-bar');
   const pages=node('aside',{className:'pages-panel',id:'pagesPanel'});
   pages.setAttribute('aria-label','Document pages');
-  pages.append(node('h2',{className:'panel-heading'},'Pages'));
+  const pagesHeading=node('h2',{className:'panel-heading'},'Pages');
+  const closePages=button('×',()=>togglePages(),{className:'panel-close',title:'Close pages'});closePages.setAttribute('aria-label','Close pages');pagesHeading.append(closePages);pages.append(pagesHeading);
   const pageButtons=node('div',{className:'page-action-row'});
   pageButtons.append(button('Previous',()=>navigate(-1)),button('Next',()=>navigate(1)));
   pages.append(pageButtons);
@@ -33,34 +35,51 @@
   pageSection.querySelector('h4').textContent='Organise pages';
   const rotateRow=node('div',{className:'page-action-row'});rotateRow.append(el.pageRotL,el.pageRotR);pages.append(rotateRow);
   const propsHeading=node('h2',{className:'panel-heading'},'Properties');
-  propsHeading.append(button('Close',()=>{if(innerWidth>900)sidebar.classList.add('collapsed');else sidebar.classList.remove('open');if(pdfDocRender)renderPage(currentPageIndex,true).catch(showFailure);},{className:'properties-toggle'}));sidebar.prepend(propsHeading);
+  propsHeading.append(button('Close',()=>{if(innerWidth>900)sidebar.classList.add('collapsed');else sidebar.classList.remove('open');syncPanelButtons();if(pdfDocRender)renderPage(currentPageIndex,true).catch(showFailure);},{className:'properties-toggle'}));sidebar.prepend(propsHeading);
   const fileInput=el.file;fileInput.classList.add('file-input');fileInput.hidden=true;
   toolbar.replaceChildren();
   toolbar.append(button('Open PDF',()=>fileInput.click()),fileInput);
-  const docInfo=node('div');
+  const docInfo=node('div',{className:'document-info'});
   const documentName=node('div',{className:'document-name'},fileName);
   const draftStatus=node('div',{className:'draft-status',role:'status'},'No document open');docInfo.append(documentName,draftStatus);toolbar.append(docInfo);
   const docActions=node('div',{className:'document-actions'});
-  docActions.append(button('Pages',togglePages),button('Properties',toggleProperties,{className:'properties-toggle'}));
-  const restoreButton=button('Restore draft',()=>restoreDraft());
-  const saveDraftButton=button('Save draft',()=>saveDraft(true));
-  const clearDraftButton=button('Clear draft',clearDraft);docActions.append(restoreButton,saveDraftButton,el.download);toolbar.append(docActions);
+  const pagesToggle=button('Pages',togglePages,{'aria-controls':'pagesPanel'});
+  const propertiesToggle=button('Properties',toggleProperties,{className:'properties-toggle','aria-controls':'sidebar'});
+  const focusToggle=button('Focus PDF',toggleFocus,{'aria-pressed':'false',title:'Hide panels and the tool row for a larger document view'});
+  pagesToggle.setAttribute('aria-controls','pagesPanel');propertiesToggle.setAttribute('aria-controls','sidebar');focusToggle.setAttribute('aria-pressed','false');
+  docActions.append(pagesToggle,propertiesToggle,focusToggle);
+  const restoreButton=button('Restore draft',()=>{draftMenu.open=false;restoreDraft();});
+  const saveDraftButton=button('Save draft',()=>{draftMenu.open=false;saveDraft(true);});
+  const clearDraftButton=button('Clear draft',clearDraft);
+  const draftMenu=node('details',{className:'document-menu'}),draftSummary=node('summary',{},'Drafts');
+  const draftActions=node('div',{className:'document-menu-content'});draftActions.append(restoreButton,saveDraftButton);draftMenu.append(draftSummary,draftActions);
+  docActions.append(draftMenu,el.download);toolbar.append(docActions);
   el.download.textContent='Download PDF';
   const empty=node('div',{className:'empty-state',id:'editorEmpty'});
   empty.append(node('div',{className:'empty-icon'},'▤'),node('h1',{},'Your document. Your workspace.'),node('p',{},'Open a PDF to edit, review, sign and measure. Recoverable drafts stay in this browser.'),button('Choose a PDF',()=>fileInput.click()));
   $('viewerShell').append(empty);el.pageLayer.hidden=true;
   const zoomControls=node('div',{className:'page-action-row'});zoomControls.style.margin='0';zoomControls.append(el.zoomOut,el.zoomPct,el.zoomIn,el.zoomReset,el.pageInfo);
-  el.zoomReset.textContent='Fit';status.append(zoomControls);
+  el.zoomReset.textContent='Fit width';
+  el.zoomReset.onclick=()=>{fitMode='width';if(pdfDocRender)renderPage(currentPageIndex,true).catch(showFailure);};
+  const fitPageButton=button('Fit page',()=>{fitMode='page';if(pdfDocRender)renderPage(currentPageIndex,true).catch(showFailure);});zoomControls.append(fitPageButton);
+  const shortcuts=node('details',{className:'keyboard-help'});shortcuts.append(node('summary',{},'Shortcuts'));
+  const shortcutList=node('div',{className:'keyboard-help-content'});while(status.firstChild)shortcutList.append(status.firstChild);shortcuts.append(shortcutList);
+  status.append(shortcuts,zoomControls);
   const instruction=node('div',{className:'tool-instruction'});status.prepend(instruction);
   const toolLabels={highlight:'Highlight',pen:'Freehand pen',ellipse:'Ellipse',cloud:'Revision cloud',callout:'Comment / callout',stamp:'Stamp',signature:'Signature',area:'Measure area',perimeter:'Measure perimeter'};
   for(const [value,label] of Object.entries(toolLabels))el.tool.append(node('option',{value},label));
   const strip=node('div',{className:'tool-strip',role:'toolbar'});strip.setAttribute('aria-label','Editing tools');
-  const quick=['select','editText','line','arrow','highlight','pen','ellipse','cloud','callout','stamp','signature','dimension','area','perimeter','redact'];
+  const quick=['select','editText','line','arrow','highlight','pen','callout'];
   for(const value of quick){
     const option=[...el.tool.options].find(o=>o.value===value);
-    const b=button(value==='editText'?'Text':value==='select'?'Select':option.textContent,()=>chooseTool(value));
+    const b=button(value==='editText'?'Text':value==='select'?'Select':value==='pen'?'Pen':value==='callout'?'Comment':option.textContent,()=>chooseTool(value));
     b.dataset.tool=value;b.setAttribute('aria-pressed','false');strip.append(b);
   }
+  const moreTools=node('select',{className:'more-tools','aria-label':'All editing tools'});
+  moreTools.setAttribute('aria-label','All editing tools');
+  moreTools.append(node('option',{value:''},'More tools…'));
+  for(const option of el.tool.options)moreTools.append(node('option',{value:option.value},option.textContent));
+  moreTools.addEventListener('change',()=>{if(moreTools.value)chooseTool(moreTools.value);});strip.append(moreTools);
   const historyGroup=node('span',{className:'page-action-row'});historyGroup.style.margin='0';historyGroup.append(el.undo,el.redo);strip.append(historyGroup);
   toolbar.after(strip);
   el.tool.closest('.sidebar-section').querySelector('h4').textContent='Active tool';
@@ -105,11 +124,21 @@
   }
   try{stampText.value=localStorage.getItem('pdf-studio-stamp')||'';}catch{}
 
-  function togglePages(){if(innerWidth>600)pages.classList.toggle('collapsed');else{pages.classList.remove('collapsed');pages.classList.toggle('open');sidebar.classList.remove('open');}if(pdfDocRender)renderPage(currentPageIndex,true).catch(showFailure);}
-  function toggleProperties(){if(innerWidth>900)sidebar.classList.toggle('collapsed');else{sidebar.classList.remove('collapsed');sidebar.classList.toggle('open');pages.classList.remove('open');}if(pdfDocRender)renderPage(currentPageIndex,true).catch(showFailure);}
-  function chooseTool(value){cancelGesture();el.tool.value=value;el.tool.dispatchEvent(new Event('change'));}
+  let focusPanels=null;
+  function syncPanelButtons(){pagesToggle.setAttribute('aria-expanded',String(innerWidth>600?!pages.classList.contains('collapsed'):pages.classList.contains('open')));propertiesToggle.setAttribute('aria-expanded',String(innerWidth>900?!sidebar.classList.contains('collapsed'):sidebar.classList.contains('open')));}
+  function toggleFocus(){
+    if(!focusPanels){focusPanels={pages:pages.className,sidebar:sidebar.className};pages.classList.add('collapsed');sidebar.classList.add('collapsed');pages.classList.remove('open');sidebar.classList.remove('open');document.body.classList.add('pdf-focus');focusToggle.textContent='Exit focus';focusToggle.setAttribute('aria-pressed','true');}
+    else{pages.className=focusPanels.pages;sidebar.className=focusPanels.sidebar;focusPanels=null;document.body.classList.remove('pdf-focus');focusToggle.textContent='Focus PDF';focusToggle.setAttribute('aria-pressed','false');}
+    syncPanelButtons();if(pdfDocRender)renderPage(currentPageIndex,true).catch(showFailure);
+  }
+  function showProperties(){if(innerWidth>900)sidebar.classList.remove('collapsed');else{sidebar.classList.remove('collapsed');sidebar.classList.add('open');pages.classList.remove('open');}syncPanelButtons();if(pdfDocRender)renderPage(currentPageIndex,true).catch(showFailure);}
+  function togglePages(){if(focusPanels)toggleFocus();if(innerWidth>600)pages.classList.toggle('collapsed');else{pages.classList.remove('collapsed');pages.classList.toggle('open');sidebar.classList.remove('open');}syncPanelButtons();if(pdfDocRender)renderPage(currentPageIndex,true).catch(showFailure);}
+  function toggleProperties(){if(focusPanels)toggleFocus();if(innerWidth>900)sidebar.classList.toggle('collapsed');else{sidebar.classList.remove('collapsed');sidebar.classList.toggle('open');pages.classList.remove('open');}syncPanelButtons();if(pdfDocRender)renderPage(currentPageIndex,true).catch(showFailure);}
+  syncPanelButtons();window.addEventListener('resize',syncPanelButtons);
+  function chooseTool(value){cancelGesture();el.tool.value=value;el.tool.dispatchEvent(new Event('change'));if(!['select','pen'].includes(value))showProperties();}
   function syncTools(){
     const tool=el.tool.value;
+    moreTools.value=quick.includes(tool)?'':tool;
     strip.querySelectorAll('[data-tool]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tool===tool)));
     const selection=edits.filter(it=>it.page===currentPageIndex&&selectedIds.includes(it.id));
     $('drawingSettings').hidden=!DRAW_TYPES.has(tool)&&!(tool==='select'&&selection.some(it=>DRAW_TYPES.has(it.type))); $('boxFillSetting').hidden=!['box','select'].includes(tool);
@@ -154,7 +183,7 @@
   }
   function refreshComments(){
     commentList.replaceChildren();const list=edits.filter(it=>it.type==='callout');
-    for(const it of list){const b=button(`${it.number}. ${it.text}`,async()=>{currentPageIndex=it.page;selectedIds=[it.id];await renderPage(it.page,true);commentText.value=it.text;sidebar.classList.add('open');});b.className='comment-card';b.append(node('small',{},`Page ${it.page+1}`));commentList.append(b);}
+    for(const it of list){const b=button(`${it.number}. ${it.text}`,async()=>{currentPageIndex=it.page;selectedIds=[it.id];await renderPage(it.page,true);commentText.value=it.text;showProperties();});b.className='comment-card';b.append(node('small',{},`Page ${it.page+1}`));commentList.append(b);}
     if(!list.length)commentList.append(node('p',{className:'muted'},'No staged comments.'));
     const selected=edits.find(it=>it.type==='callout'&&selectedIds.includes(it.id));
     if(selected&&lastCommentId!==selected.id){commentText.value=selected.text;lastCommentId=selected.id;}if(!selected)lastCommentId=null;
@@ -263,7 +292,7 @@
       polygon.push(p);drawOverlay();drawPolygonPreview();return;
     }
     if(tool==='callout'){
-      const text=commentText.value.trim();if(!text){sidebar.classList.add('open');commentText.focus();return showWarning('Write the comment before placing it.');}
+      const text=commentText.value.trim();if(!text){showProperties();commentText.focus();return showWarning('Write the comment before placing it.');}
       const number=Math.max(0,...edits.filter(it=>it.type==='callout').map(it=>it.number||0))+1;
       addItem({type:'callout',text,number,rectCss:{x:p.x,y:p.y,w:Math.min(240,el.pdfCanvas.clientWidth-p.x),h:Math.min(96,el.pdfCanvas.clientHeight-p.y)},...style()});return;
     }
