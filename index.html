@@ -1140,15 +1140,18 @@ function hexToRgb(hex){
   return PDFLib.rgb(r/255,g/255,b/255);
 }
 
-async function applyEditsToPdf(){
+async function applyEditsToPdf(options={}){
   if (!pdfDocWriter) return;
 
+  if (options.confirm !== false) {
   if (!edits.length){
     const ok = confirm('No staged items to apply. Continue anyway?');
     if (!ok) return;
   } else {
     const ok = confirm(`Apply ${edits.length} staged item${edits.length>1?'s':''} into the PDF?\nThis will embed text/images/redactions on their pages.`);
     if (!ok) return;
+  }
+
   }
 
   // embed custom font if chosen
@@ -1702,8 +1705,9 @@ if (ocrSelBtn) {
 </script>
 
 <!-- Shape drawing tools: Box, Line, Arrow, Dimension -->
-<script src="/app/addons-draw.js?v=20261023-scale"></script>
-<script src="/app/studio.js?v=20261023-layout"></script>
+<script src="/app/addons-draw.js?v=20261023-handoff"></script>
+<script src="/app/pdf-session.js?v=20261023"></script>
+<script src="/app/studio.js?v=20261023-handoff"></script>
 
 </body>
 </html>

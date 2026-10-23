@@ -262,6 +262,7 @@ async function loadPdf(file) {
     clearRanges();
     addRange('1-' + pageCount);
     
+    await PdfSession.save(new Uint8Array(pdfData),file.name);
     hideProgress();
     updateSplitButton();
     
@@ -382,5 +383,7 @@ presetOddEven.addEventListener('click', () => {
   if (even.length > 0) addRange(even.join(','));
 });
 </script>
+<script src="/app/pdf-session.js?v=20261023"></script>
+<script>PdfSession.connect({hasDocument:()=>!!pdfDoc||fileInput.files.length>0,load:record=>loadPdf(PdfSession.file(record)),read:async()=>pdfDoc?{bytes:await pdfDoc.save(),name:PdfSession.name||'document.pdf'}:null});</script>
 </body>
 </html>

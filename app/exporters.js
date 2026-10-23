@@ -4,14 +4,20 @@
 
   let pdfBytes=null, pdfDoc=null;
 
-  document.getElementById('pdfFile').addEventListener('change', async (e)=>{
-    const f=e.target.files?.[0]; if(!f) return;
-    pdfBytes = new Uint8Array(await f.arrayBuffer());
-    pdfDoc = await pdfjsLib.getDocument({data:pdfBytes}).promise;
-    alert(`Loaded PDF with ${pdfDoc.numPages} page(s).`);
+  let opening=Promise.resolve();
+  async function openPdf(file){
+    const bytes=new Uint8Array(await file.arrayBuffer());
+    const doc=await pdfjsLib.getDocument({data:bytes.slice()}).promise;
+    pdfBytes=bytes;pdfDoc=doc;
+    document.getElementById('pdfFile').title=`Loaded PDF with ${pdfDoc.numPages} page(s).`;
+  }
+  document.getElementById('pdfFile').addEventListener('change',e=>{
+    const file=e.target.files?.[0];if(!file)return;
+    opening=openPdf(file);opening.catch(e=>alert(e.message||'Unable to open PDF'));
   });
 
   async function extractAllText(){
+    await opening;
     if (!pdfDoc){ alert('Load a PDF first'); return []; }
     const rows = [];
     for (let i=1;i<=pdfDoc.numPages;i++){

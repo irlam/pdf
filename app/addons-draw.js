@@ -405,7 +405,7 @@
 
   /* ----------------------- Extend Apply: burn our items, then call original ----------------------- */
   const _apply = applyEditsToPdf; // keep original
-  window.applyEditsToPdf = async function(){
+  window.applyEditsToPdf = async function(options={}){
     if (typeof pdfDocWriter === 'undefined' || !pdfDocWriter) return;
 
     // 1) Take our items out and draw them into the PDF
@@ -490,7 +490,7 @@
     }
 
     // 3) Call original apply to handle text/image/redact and do save+reload
-    await _apply();
+    await _apply(options);
   };
 
   // Done!
