@@ -57,7 +57,7 @@ When leaving the editor, staged annotations are applied to the PDF carried to th
 
 Choose **Close current PDF** in the editor’s Drafts menu, or beside the filename on a tool page, to clear the handoff and start another document. This does not delete an editor draft; use Clear draft separately when needed. A failed handoff save keeps you on the current page so you can download a copy. Browser Back/Forward is not the save action for newly staged editor annotations; use the site navigation to carry those changes.
 
-### OCR text extraction
+### OCR text extraction and replacement
 
 Choose OCR from More tools. **OCR Current Page** recognises the page and copies the result to the clipboard. **OCR Selection** lets you drag a temporary blue box around text; recognition begins when you release it. The box creates no annotation or redaction and does not change the active tool. Escape or Cancel OCR selection dismisses it. Selection coordinates account for zoom, screen density and page rotation.
 
@@ -244,3 +244,7 @@ Secure-redaction export rebuilds the affected pages at approximately 150 dpi, ca
 ## About
 
 A simple, self-hosted PDF utility for teams who need to make quick edits, annotations, or conversions without cloud services or complex infrastructure. Perfect for construction drawings, contracts, forms, and general document workflows.
+
+After recognition, blue boxes mark recognised words while the OCR tool is active. Click a box to correct or replace that word, choose text and cover colours, and **Save replacement**. Blank replacement text covers the word. Longer text is fitted inside the same box; use Select to move or resize the staged replacement. Clicking the same OCR box again updates its existing replacement. Undo/redo, browser drafts, download and cross-tool handoff use the normal annotation workflow. Hide the boxes with **Show clickable text boxes after OCR**; run OCR again after changing the source PDF. Word boxes are temporary and are not stored in drafts.
+
+Replacement text is drawn over a solid cover, using Helvetica with Western European character support. It does not rewrite or remove the original text/image underneath, preserve the original font, or make all scanned text searchable. Use secure Redact for sensitive information. Unsupported replacement characters are rejected before staging. OCR extraction still supports the selected recognition languages.

@@ -10,7 +10,7 @@
   <!-- Modern, compact UI -->
   <link rel="stylesheet"
         href="/assets/ui.css?v=20261013">
-  <link rel="stylesheet" href="/assets/editor.css?v=20261023-ocr">
+  <link rel="stylesheet" href="/assets/editor.css?v=20261023-ocr-edit">
 
   <!-- Tesseract.js for OCR (loaded from CDN) -->
   <script src="https://unpkg.com/tesseract.js@v4.1.4/dist/tesseract.min.js" defer onerror="console.log('OCR: Tesseract.js not available')"></script>
@@ -144,7 +144,7 @@
         <option value="image">Place Image</option>
         <option value="watermark">Watermark</option>
         <option value="find">Find Text</option>
-        <option value="ocr">OCR (Extract Text)</option>
+        <option value="ocr">OCR (Extract / Edit Text)</option>
       </select>
     </div>
 
@@ -254,6 +254,8 @@
         <select id="ocrDpi"><option value="300">300 dpi — recommended</option><option value="400">400 dpi — fine text</option><option value="200">200 dpi — faster</option></select>
       </label>
       <p class="muted">For plans, try Drawing labels. Large sheets are recognised in sections to retain small-text detail.</p>
+      <label><input type="checkbox" id="ocrEditText" checked /> Show clickable text boxes after OCR</label>
+      <p class="muted">Click a recognised word to replace it. Replacements cover the original; they do not securely remove it.</p>
       <button id="ocrPage" class="btn-primary">OCR Current Page</button>
       <button id="ocrSelection">OCR Selection</button>
       <div id="ocrProgress">
@@ -562,6 +564,11 @@ function reprojectEdits(pageIndex, previous, next){
   };
   for (const it of [edits,...undoStack,...redoStack].flat().filter(it=>it.page===pageIndex)){
     const r=it.rectCss;
+    if(it.ocrText){
+      const center=project({x:r.x+r.w/2,y:r.y+r.h/2}),scale=(next.scale/dpr())/(previous.viewport.scale/previous.pixelRatio);
+      it.rectCss={x:center.x-r.w*scale/2,y:center.y-r.h*scale/2,w:r.w*scale,h:r.h*scale};
+      it.rot=(it.rot||0)+next.rotation-previous.viewport.rotation;continue;
+    }
     const corners=[{x:r.x,y:r.y},{x:r.x+r.w,y:r.y},{x:r.x+r.w,y:r.y+r.h},{x:r.x,y:r.y+r.h}].map(project);
     const xs=corners.map(p=>p.x),ys=corners.map(p=>p.y);
     const nr={x:Math.min(...xs),y:Math.min(...ys),w:Math.max(...xs)-Math.min(...xs),h:Math.max(...ys)-Math.min(...ys)};
@@ -671,6 +678,12 @@ function drawItem(it, selected){
   if (it.type==='redact'){
     overlayCtx.fillStyle = it.color||'#000';
     overlayCtx.fillRect(rd.x, rd.y, rd.w, rd.h);
+  } else if (it.type==='text' && it.ocrText){
+    overlayCtx.fillStyle=it.cover||'#fff';overlayCtx.fillRect(rd.x,rd.y,rd.w,rd.h);
+    overlayCtx.fillStyle=it.color||'#000';
+    const size=rd.h*.85;overlayCtx.font=size+'px Helvetica, Arial, sans-serif';
+    const width=overlayCtx.measureText(it.text||'').width,scale=Math.min(1,rd.w/Math.max(1,width));
+    overlayCtx.translate(rd.x,rd.y+rd.h*.85);overlayCtx.scale(scale,scale);overlayCtx.textBaseline='alphabetic';overlayCtx.fillText(it.text||'',0,0);
   } else if (it.type==='text'){
     overlayCtx.fillStyle = it.cover || '#fff';
     overlayCtx.fillRect(rd.x, rd.y, rd.w, rd.h);
@@ -1192,6 +1205,18 @@ async function applyEditsToPdf(options={}){
       const w = img.width*s, h = img.height*s;
       page.drawImage(img, { x:r.x, y:r.y, width:w, height:h, rotate:rot });
     }
+    else if (it.type === 'text' && it.ocrText){
+      const box=it.rectCss,c={x:box.x+box.w/2,y:box.y+box.h/2},angle=rad(it.rot||0);
+      const point=(x,y)=>cssToPdf({x:c.x+(x-c.x)*Math.cos(angle)-(y-c.y)*Math.sin(angle),y:c.y+(x-c.x)*Math.sin(angle)+(y-c.y)*Math.cos(angle)},it.page);
+      const top=point(box.x,box.y),right=point(box.x+box.w,box.y),bottom=point(box.x,box.y+box.h);
+      const width=Math.hypot(right.x-top.x,right.y-top.y),height=Math.hypot(bottom.x-top.x,bottom.y-top.y),rotation=PDFLib.degrees(Math.atan2(right.y-top.y,right.x-top.x)*180/Math.PI);
+      page.drawRectangle({x:bottom.x,y:bottom.y,width,height,color:hexToRgb(it.cover||'#ffffff'),rotate:rotation});
+      const font=await pdfDocWriter.embedFont(PDFLib.StandardFonts.Helvetica),text=it.text||'',size=height*.85;
+      const textWidth=font.widthOfTextAtSize(text,size),fitted=size*Math.min(1,width/Math.max(1,textWidth));
+      // Keep the recognised baseline while fitting longer replacements inside the cover.
+      const baseline=point(box.x,box.y+box.h*.85);
+      page.drawText(text,{x:baseline.x,y:baseline.y,size:fitted,font,color:hexToRgb(it.color||'#000000'),rotate:rotation});
+    }
     else if (it.type === 'text'){
       // cover background first
       page.drawRectangle({ x:r.x, y:r.y, width:r.w, height:r.h, color: hexToRgb(it.cover||'#FFFFFF'), rotate:rot });
@@ -1622,7 +1647,18 @@ async function performOCR(imageData, options = {}) {
 
 </script>
 
-<script src="/app/ocr-tools.js?v=20261023"></script>
+<dialog id="ocrTextDialog" aria-labelledby="ocrTextTitle">
+  <form id="ocrTextForm">
+    <h3 id="ocrTextTitle">Edit recognised text</h3>
+    <label>Replacement text <input id="ocrReplacementText" type="text" autocomplete="off" /></label>
+    <p class="muted">Text fits the original box. Use Select to move or resize it afterwards. Blank text covers the word.</p>
+    <label>Text colour <input id="ocrTextColour" type="color" value="#000000" /></label>
+    <label>Cover colour <input id="ocrCoverColour" type="color" value="#ffffff" /></label>
+    <p class="muted">The original remains underneath the cover. Use Redact for sensitive content. Western European text is supported.</p>
+    <div class="ocr-dialog-actions"><button type="button" id="ocrTextCancel">Cancel</button><button type="submit" class="btn-primary">Save replacement</button></div>
+  </form>
+</dialog>
+<script src="/app/ocr-tools.js?v=20261023-edit"></script>
 
 <!-- Shape drawing tools: Box, Line, Arrow, Dimension -->
 <script src="/app/addons-draw.js?v=20261023-solid"></script>
