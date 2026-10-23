@@ -629,6 +629,7 @@ function drawGuideLines(hitV, hitH){
 const HANDLE = 8; // px CSS
 
 function drawOverlay(){
+  overlayCtx.setLineDash([]);
   overlayCtx.clearRect(0,0,el.overlay.width, el.overlay.height);
   drawGrid();
   for (const it of edits){
@@ -639,11 +640,14 @@ function drawOverlay(){
     const gb = groupBox();
     if (gb){
       const gbd = toDev(gb);
+      overlayCtx.save();
+      overlayCtx.setLineDash([]);
       overlayCtx.lineWidth = 2*dpr();
       overlayCtx.strokeStyle = "rgba(59,130,246,0.95)";
       overlayCtx.strokeRect(gbd.x,gbd.y,gbd.w,gbd.h);
       drawHandles(gbd);
       drawRotateHandle(gbd);
+      overlayCtx.restore();
     }
   }
 }
@@ -708,6 +712,8 @@ function drawItem(it, selected){
   }
 }
 function drawHandles(rd){
+  overlayCtx.save();
+  overlayCtx.setLineDash([]);
   const hs = HANDLE*dpr();
   const pts = handlePoints(rd);
   overlayCtx.fillStyle = "#fff";
@@ -716,8 +722,11 @@ function drawHandles(rd){
     overlayCtx.fillRect(p.x - hs/2, p.y - hs/2, hs, hs);
     overlayCtx.strokeRect(p.x - hs/2, p.y - hs/2, hs, hs);
   }
+  overlayCtx.restore();
 }
 function drawRotateHandle(rd){
+  overlayCtx.save();
+  overlayCtx.setLineDash([]);
   const r = 14*dpr();
   const top = { x: rd.x + rd.w/2, y: rd.y - 20*dpr() };
   overlayCtx.beginPath();
@@ -727,6 +736,7 @@ function drawRotateHandle(rd){
   overlayCtx.lineWidth = 2*dpr();
   overlayCtx.strokeStyle = "rgba(59,130,246,1)";
   overlayCtx.stroke();
+  overlayCtx.restore();
 }
 function handlePoints(rd){
   const x1=rd.x, y1=rd.y, x2=rd.x+rd.w, y2=rd.y+rd.h, xm=(x1+x2)/2, ym=(y1+y2)/2;
@@ -1705,7 +1715,7 @@ if (ocrSelBtn) {
 </script>
 
 <!-- Shape drawing tools: Box, Line, Arrow, Dimension -->
-<script src="/app/addons-draw.js?v=20261023-handoff"></script>
+<script src="/app/addons-draw.js?v=20261023-solid"></script>
 <script src="/app/pdf-session.js?v=20261023"></script>
 <script src="/app/studio.js?v=20261023-measurements"></script>
 
