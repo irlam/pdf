@@ -81,6 +81,12 @@ For static hosting, use the Download button instead of Save.
 
 ## Setup
 
+### Browser libraries and hosting
+
+The editor and PDF tools load their bundled PDF.js, matching worker, PDF-lib and JSZip files from `/assets/lib/`. Deploy that directory with the HTML pages. These are copies of the existing bundled versions; the original `/vendor/` files remain for compatibility. Some hosting configurations block URLs under `/vendor/`, returning HTML 404 pages and causing MIME-type and `pdfjsLib is not defined` errors. The browser assets use `/assets/lib/` to avoid that path restriction. No CDN is required for these libraries.
+
+After deploying, hard-refresh the page and check that `/assets/lib/pdf.min.js`, `/assets/lib/pdf.worker.min.js` and `/assets/lib/pdf-lib.min.js` return JavaScript successfully.
+
 ### DWG Conversion (Optional)
 
 To enable DWG file conversion, you need to install converter binaries on your server:
@@ -122,7 +128,7 @@ cd /path/to/pdf/vendor/dxf-parser
 curl -o dxf-parser.min.js https://cdn.jsdelivr.net/npm/dxf-parser@1.1.2/dist/dxf-parser.min.js
 ```
 
-**Note**: PDF-lib is already included at `/vendor/pdf-lib.min.js` and does not need to be downloaded separately.
+**Note**: PDF-lib is already included at `/assets/lib/pdf-lib.min.js` and does not need to be downloaded separately.
 
 ### Custom Fonts for Text Editing
 
