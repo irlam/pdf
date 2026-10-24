@@ -133,3 +133,17 @@ body.pdf-studio{display:flex;flex-direction:column}
 #ocrTextDialog label{display:block;margin:12px 0}
 #ocrReplacementText{display:block;width:100%;box-sizing:border-box;padding:9px;margin-top:6px}
 .ocr-dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+
+.pdf-studio .tool-strip button[data-tool="removeObjects"]{color:#fdba74}
+.pdf-studio .tool-strip button[data-tool="removeObjects"][aria-pressed="true"]{color:#ffedd5;background:#7c2d1233;border-color:#fb923c}
+.object-removal-bar{padding:10px 14px;background:#192638;border-bottom:1px solid #475569;flex-shrink:0}
+.object-removal-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.object-removal-controls label{font-size:12px;white-space:nowrap;display:flex;align-items:center;gap:5px}
+#objectSelectionCount{font-size:12px;color:#fdba74;margin-right:auto}
+#objectRemovalStatus{font-size:12px;line-height:1.4;margin:7px 0 0}
+.removing-objects{cursor:crosshair;touch-action:none}
+@media(max-width:600px){.object-removal-bar{padding:8px}.object-removal-controls{gap:6px}#objectFilter{max-width:170px}#objectSelectionCount{width:100%}}
+
+.object-removal-hint{font-size:11px;color:#94a3b8;margin:5px 0 0;line-height:1.35}
+
+.pdf-studio.pdf-focus .object-removal-bar{display:none}

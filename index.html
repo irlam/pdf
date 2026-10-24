@@ -10,7 +10,7 @@
   <!-- Modern, compact UI -->
   <link rel="stylesheet"
         href="/assets/ui.css?v=20261013">
-  <link rel="stylesheet" href="/assets/editor.css?v=20261023-ocr-edit">
+  <link rel="stylesheet" href="/assets/editor.css?v=20261024-objects">
 
   <!-- Tesseract.js for OCR (loaded from CDN) -->
   <script src="https://unpkg.com/tesseract.js@v4.1.4/dist/tesseract.min.js" defer onerror="console.log('OCR: Tesseract.js not available')"></script>
@@ -139,6 +139,7 @@
       <h4>🔧 Tool</h4>
       <select id="tool">
         <option value="select">Select / Move / Resize</option>
+        <option value="removeObjects">Remove objects</option>
         <option value="editText">Edit Text</option>
         <option value="redact">Redact</option>
         <option value="image">Place Image</option>
@@ -506,7 +507,7 @@ async function renderPage(index, resetZoom=false){
 
   // render base page
   overlayCtx.clearRect(0,0,el.overlay.width, el.overlay.height);
-  await page.render({ canvasContext: pdfCtx, viewport }).promise;
+  if(!await window.PdfObjectRemoval?.renderDisplay(page,index,viewport,pdfCtx))await page.render({ canvasContext: pdfCtx, viewport }).promise;
 
   // extract text runs for find/assist
   await extractTextRuns(page);
@@ -563,6 +564,7 @@ function reprojectEdits(pageIndex, previous, next){
     return {x:css[0]/dpr(),y:css[1]/dpr()};
   };
   for (const it of [edits,...undoStack,...redoStack].flat().filter(it=>it.page===pageIndex)){
+    if(it.type==='sourceRemoval')continue;
     const r=it.rectCss;
     if(it.ocrText){
       const center=project({x:r.x+r.w/2,y:r.y+r.h/2}),scale=(next.scale/dpr())/(previous.viewport.scale/previous.pixelRatio);
@@ -666,6 +668,7 @@ function drawOverlay(){
   }
 }
 function drawItem(it, selected){
+  if(it.type==='sourceRemoval')return;
   const r = it.rectCss, rd = toDev(r);
   overlayCtx.save();
   // rotation visualize (around center)
@@ -781,7 +784,7 @@ function hitHandle(cssX, cssY, rd){
 }
 function hitItemAt(cssX, cssY){
   for (let i=edits.length-1;i>=0;i--){
-    const it = edits[i]; if (it.page!==currentPageIndex) continue;
+    const it = edits[i]; if (it.page!==currentPageIndex||it.type==='sourceRemoval') continue;
     const r = it.rectCss;
     if (cssX>=r.x && cssX<=r.x+r.w && cssY>=r.y && cssY<=r.y+r.h) return it.id;
   }
@@ -1663,7 +1666,9 @@ async function performOCR(imageData, options = {}) {
 <!-- Shape drawing tools: Box, Line, Arrow, Dimension -->
 <script src="/app/addons-draw.js?v=20261023-solid"></script>
 <script src="/app/pdf-session.js?v=20261023"></script>
-<script src="/app/studio.js?v=20261023-measurements"></script>
+<script src="/app/pdf-objects.js?v=20261024"></script>
+<script src="/app/studio.js?v=20261024-objects"></script>
+<script src="/app/remove-objects.js?v=20261024"></script>
 
 <script src="/app/colour-presets.js?v=20261023"></script>
 </body>

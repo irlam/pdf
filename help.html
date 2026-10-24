@@ -39,6 +39,7 @@
       <a href="#workspace">Professional workspace</a>
       <a href="#quickstart">Quick start</a>
       <a href="#tools">Tools overview</a>
+      <a href="#remove-objects">Remove existing PDF objects</a>
       <a href="#drawing">Drawing &amp; measurement</a>
       <a href="#scale">Scale detection &amp; calibration</a>
       <a href="#snap-grid">Snap, grid &amp; guides</a>
@@ -77,6 +78,7 @@
       <thead><tr><th>Tool</th><th>What it does</th><th>Notes</th></tr></thead>
       <tbody>
         <tr><td><b>Select</b></td><td>Move, resize, rotate items. Multi-select with <span class="kbd">Shift</span>.</td><td>Nudge with arrows; <span class="kbd">Alt</span>+arrows resizes.</td></tr>
+        <tr><td><b>Remove objects</b></td><td>Select and preview existing drawing shapes or PDF markups before removing them.</td><td>Beside Select. Connected coloured pieces, drag selection, Undo/Redo and draft recovery.</td></tr>
         <tr><td><b>Edit Text</b></td><td>Covers existing content and writes new text.</td><td>Upload <b>Custom TTF</b> for exact fonts. Bold/Italic are faux unless a matching face is provided.</td></tr>
         <tr><td><b>Redact</b></td><td>Draw opaque rectangles (default black).</td><td>Rendered permanently on Apply.</td></tr>
         <tr><td><b>Image</b></td><td>Embeds PNG/JPG.</td><td>Choose file first, then draw the box.</td></tr>
@@ -171,6 +173,14 @@
         <tr><td><span class="kbd">⟲ / ⟳</span></td><td>Undo / Redo buttons on the toolbar</td></tr>
       </tbody>
     </table>
+  </div>
+
+  <div id="remove-objects" class="section">
+    <h2>Remove existing PDF objects</h2>
+    <p>Choose <b>Remove objects</b> beside Select. Click a shape, or drag a box fully around several objects. Hover is blue and selections are orange. Hold Shift to add objects. Connected pieces groups touching fragments with the same colour, so a revision cloud can be selected together. Black and grey shapes stay individual.</p>
+    <p>Start with <b>Coloured shapes</b> to avoid black/grey drawing geometry, or choose Filled shapes, Outlined shapes, All drawing shapes or PDF annotations. For a complete arrow with separate black borders, use All drawing shapes and drag around it.</p>
+    <p>Choose <b>Preview removal</b>, check the remaining drawing, then <b>Keep removal</b>. Cancel / clear or Escape restores the view. Delete/Backspace starts a preview. Kept removals support Undo/Redo and editable drafts; Download/Apply commits them to the exported PDF.</p>
+    <p>Text, images, links and form fields are protected. A separate cloud label remains text. Some symbols have blank cut-outs underneath, which can leave a white gap after removal; the preview shows the actual remaining background. Scanned pixels cannot be removed as separate objects, and layered or unsupported content stays protected. Use secure Redact for sensitive content.</p>
   </div>
 
   <div id="workspace" class="section">
