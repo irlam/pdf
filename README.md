@@ -7,6 +7,7 @@ A lightweight, self-hosted web application for working with PDF files. Runs enti
 This tool provides a comprehensive suite of PDF editing and manipulation features:
 
 ### Core Editor (`index.html`)
+- **Remove objects**: Primary tool beside Select. Highlight and preview source drawing shapes or PDF markups before removal, with connected coloured pieces, box selection, Undo/Redo and editable drafts.
 - **Text Editing**: Cover existing text and replace with new content (fonts, sizes, colors, alignment)
 - **Secure Redaction**: Rebuild affected pages as masked images, removing underlying content from the exported PDF (affected pages lose searchable text)
 - **Image Placement**: Insert PNG/JPG images anywhere on the page
@@ -56,6 +57,32 @@ Use the site navigation to move between Editor, Crop, Split, Convert, Print and 
 When leaving the editor, staged annotations are applied to the PDF carried to the next tool. The pre-apply editable draft remains available under **Drafts → Restore draft**; returning from Crop opens the cropped PDF rather than overwriting it with an older draft. Applying or resetting a crop updates the current document and still offers the normal download. A crop selection must be applied before switching. Hard Crop (page) produces a document containing that page, matching its download.
 
 Choose **Close current PDF** in the editor’s Drafts menu, or beside the filename on a tool page, to clear the handoff and start another document. This does not delete an editor draft; use Clear draft separately when needed. A failed handoff save keeps you on the current page so you can download a copy. Browser Back/Forward is not the save action for newly staged editor annotations; use the site navigation to carry those changes.
+
+### Remove objects from the uploaded PDF
+
+**Remove objects**, immediately beside **Select**, edits existing vector shapes and supported PDF markups. It does not cover the selection with a white rectangle or rasterise the page.
+
+1. Click a shape, or drag a box fully around several shapes. Shift adds/toggles click selections or adds a box selection. Hover is blue; selected objects are orange.
+2. The default **Coloured shapes** filter avoids black/grey drawing geometry. **Connected pieces** groups touching fragments with the same colour, such as a revision cloud. Black and grey objects remain individual. Box selection selects only shapes fully inside the box and does not grow connected groups beyond the box.
+3. Use **Filled shapes**, **Outlined shapes**, **All drawing shapes**, or **PDF annotations** to narrow or broaden selection. For an arrow made of separate coloured fills and black borders, choose **All drawing shapes** and drag around the complete arrow.
+4. Choose **Preview removal**, inspect the drawing, then **Keep removal**. **Cancel / clear** or Escape restores the view. Delete/Backspace opens the preview; it does not commit a removal.
+5. Keep working with Select, OCR, drawing or measurement tools. Kept removals are normal staged changes: Undo/Redo, browser drafts, page operations and the PDF handoff retain them. Download/Apply commits them, retaining the usual pre-apply editable draft.
+
+Text, image pixels, links and form fields are protected. A separate cloud label such as C2 remains text and is not removed with its curve; use the text tool if it also needs changing. Some source drawings have blank cut-outs underneath symbols, so removing a symbol can reveal a white gap. Preview shows the actual remaining PDF; missing source detail is not reconstructed. Scanned PDFs need image retouching rather than this tool. Layered content, inline-image streams and unsupported content are protected with an explanatory message. Vector removal is not a secure-redaction workflow; use Redact for sensitive information.
+
+The parser preserves content bytes and clipping operations, targets paint commands rather than enclosing areas, and clones edited Form invocations so copies elsewhere stay unchanged. Processing stays in the browser; no hosting dependencies are added.
+
+Validation:
+
+```sh
+node tests/pdf-objects.test.cjs
+PDF_STUDIO_BROWSER_EXECUTABLE=/path/to/chromium node tests/objects.e2e.cjs
+PDF_STUDIO_BROWSER_EXECUTABLE=/path/to/chromium node tests/objects-session.e2e.cjs
+# Optional real plan validation: do not commit customer PDFs to this repository.
+PDF_OBJECT_TEST_FILE=/path/to/plan.pdf PDF_STUDIO_BROWSER_EXECUTABLE=/path/to/chromium node tests/objects.e2e.cjs
+```
+
+The optional real-plan fixture expects the 48-segment red cloud and coloured fills/arrows in the plan used to develop this feature. The default fixture is generated locally and requires no customer document.
 
 ### OCR text extraction and replacement
 

@@ -69,7 +69,7 @@
   const toolLabels={highlight:'Highlight',pen:'Freehand pen',ellipse:'Ellipse',cloud:'Revision cloud',callout:'Comment / callout',stamp:'Stamp',signature:'Signature',area:'Measure area',perimeter:'Measure perimeter'};
   for(const [value,label] of Object.entries(toolLabels))el.tool.append(node('option',{value},label));
   const strip=node('div',{className:'tool-strip',role:'toolbar'});strip.setAttribute('aria-label','Editing tools');
-  const quick=['select','editText','line','arrow','highlight','pen','callout'];
+  const quick=['select','removeObjects','editText','line','arrow','highlight','pen','callout'];
   for(const value of quick){
     const option=[...el.tool.options].find(o=>o.value===value);
     const b=button(value==='editText'?'Text':value==='select'?'Select':value==='pen'?'Pen':value==='callout'?'Comment':option.textContent,()=>chooseTool(value));
@@ -82,6 +82,16 @@
   moreTools.addEventListener('change',()=>{if(moreTools.value)chooseTool(moreTools.value);});strip.append(moreTools);
   const historyGroup=node('span',{className:'page-action-row'});historyGroup.style.margin='0';historyGroup.append(el.undo,el.redo);strip.append(historyGroup);
   toolbar.after(strip);
+  const objectBar=node('section',{id:'objectRemovalBar',className:'object-removal-bar',hidden:true});objectBar.setAttribute('aria-label','Remove PDF objects');
+  const objectControls=node('div',{className:'object-removal-controls'});
+  const objectFilter=node('select',{id:'objectFilter'});objectFilter.setAttribute('aria-label','Objects to select');
+  for(const [value,label] of [['coloured','Coloured shapes'],['fills','Filled shapes'],['outlines','Outlined shapes'],['all','All drawing shapes'],['annotations','PDF annotations']])objectFilter.append(node('option',{value},label));
+  const connected=node('label',{title:'Joins touching pieces of the same coloured shape. Black and grey objects stay individual.'});connected.append(node('input',{id:'objectConnected',type:'checkbox',checked:true}),document.createTextNode(' Connected pieces'));
+  objectControls.append(objectFilter,connected,node('span',{id:'objectSelectionCount'},'0 selected'),node('button',{id:'objectPreview',type:'button',disabled:true},'Preview removal'),node('button',{id:'objectRemove',type:'button',className:'btn-primary',disabled:true},'Keep removal'),node('button',{id:'objectClear',type:'button',disabled:true},'Cancel / clear'));
+  const objectStatus=node('p',{id:'objectRemovalStatus',role:'status',className:'muted'},'Click an object to select it.');objectStatus.setAttribute('aria-live','polite');
+  const objectHint=node('p',{className:'object-removal-hint'},'Text and images are protected. For a complete arrow including its black border, choose All drawing shapes and drag around it.');
+  objectBar.append(objectControls,objectStatus,objectHint);strip.after(objectBar);
+
   el.tool.closest('.sidebar-section').querySelector('h4').textContent='Active tool';
   const redactInfo=node('p',{className:'muted'},'Secure redaction rebuilds affected pages as images. Covered content is removed; text on those pages is no longer searchable. Apply only when ready.');redactInfo.style.fontSize='12px';$('redactSettings').append(redactInfo);
   const markProps=section('Markup','markupSettings');
@@ -135,7 +145,7 @@
   function togglePages(){if(focusPanels)toggleFocus();if(innerWidth>600)pages.classList.toggle('collapsed');else{pages.classList.remove('collapsed');pages.classList.toggle('open');sidebar.classList.remove('open');}syncPanelButtons();if(pdfDocRender)renderPage(currentPageIndex,true).catch(showFailure);}
   function toggleProperties(){if(focusPanels)toggleFocus();if(innerWidth>900)sidebar.classList.toggle('collapsed');else{sidebar.classList.remove('collapsed');sidebar.classList.toggle('open');pages.classList.remove('open');}syncPanelButtons();if(pdfDocRender)renderPage(currentPageIndex,true).catch(showFailure);}
   syncPanelButtons();window.addEventListener('resize',syncPanelButtons);
-  function chooseTool(value){cancelGesture();el.tool.value=value;el.tool.dispatchEvent(new Event('change'));if(!['select','pen'].includes(value))showProperties();}
+  function chooseTool(value){cancelGesture();el.tool.value=value;el.tool.dispatchEvent(new Event('change'));if(!['select','pen','removeObjects'].includes(value))showProperties();}
   function syncTools(){
     const tool=el.tool.value;
     moreTools.value=quick.includes(tool)?'':tool;
@@ -146,7 +156,7 @@
     opacity.hidden=tool!=='highlight';markProps.querySelector('label').hidden=tool!=='highlight';stampSelect.hidden=stampText.hidden=tool!=='stamp';
     markProps.querySelectorAll('button')[0].hidden=tool!=='stamp';signatureButton.hidden=tool!=='signature';finishButton.hidden=!['area','perimeter'].includes(tool);
     measureProps.hidden=!['area','perimeter','dimension'].includes(tool)&&!(tool==='select'&&selection.some(it=>['line','arrow','dimension'].includes(it.type)));comments.hidden=tool!=='callout'&&!(tool==='select'&&edits.some(it=>it.type==='callout'));
-    instruction.textContent={area:'Click polygon corners, then Finish measurement. Escape cancels.',perimeter:'Click path points, then Finish measurement. Escape cancels.',callout:'Write a comment in Properties, then click to place.',signature:'Create or reuse a signature, then drag to place.',redact:'Draw over content to remove. Redaction takes effect when applied.'}[tool]||'Select an object to move or resize. Shift selects multiple objects.';
+    instruction.textContent={removeObjects:'Click a shape or drag around objects. Shift adds to selection. Preview before keeping the removal. Escape cancels.',area:'Click polygon corners, then Finish measurement. Escape cancels.',perimeter:'Click path points, then Finish measurement. Escape cancels.',callout:'Write a comment in Properties, then click to place.',signature:'Create or reuse a signature, then drag to place.',redact:'Draw over content to remove. Redaction takes effect when applied.'}[tool]||'Select an object to move or resize. Shift selects multiple objects.';
     el.scroller.style.cursor=tool==='select'?'default':'crosshair';
   }
   el.tool.addEventListener('change',()=>{cancelGesture();syncTools();});syncTools();
@@ -176,7 +186,7 @@
       // Render thumbnails sequentially to avoid a burst of full-page work.
       const p=await doc.getPage(i+1);if(generation!==thumbGeneration)return;
       const vp=p.getViewport({scale:120/p.getViewport({scale:1}).width,rotation:(p.rotate+(pageRotDelta[i]||0))%360});
-      c.width=Math.ceil(vp.width);c.height=Math.ceil(vp.height);await p.render({canvasContext:c.getContext('2d'),viewport:vp}).promise;
+      c.width=Math.ceil(vp.width);c.height=Math.ceil(vp.height);if(!await window.PdfObjectRemoval?.renderDisplay(p,i,vp,c.getContext('2d')))await p.render({canvasContext:c.getContext('2d'),viewport:vp}).promise;
       if(generation!==thumbGeneration)return;
     }
     syncThumbSelection();
@@ -240,6 +250,7 @@
     if(opened&&pdfDocWriter){fileName=file.name;documentName.textContent=fileName;if(sessionRestore){dirty=false;clearTimeout(saveTimer);lastState=stateSignature();}else{markDirty();restoreButton.hidden=false;}try{await PdfSession.save(await pdfDocWriter.save(),fileName);}catch(e){showWarning(e.message);}}
     })();return openingDocument;
   };
+  window.addEventListener('pdf-objects-changed',()=>{markDirty();refreshThumbnails().catch(showFailure);});
   window.addEventListener('mouseup',()=>{if(pdfDocWriter&&!busy&&stateSignature()!==lastState){lastState=stateSignature();markDirty();}});
   window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue='';}});
   window.addEventListener('keydown',e=>{
@@ -463,12 +474,17 @@
   }
   const apply=applyEditsToPdf;
   applyEditsToPdf=async function(options={}){
-    if(!pdfDocWriter||busy)return;busy=true;clearTimeout(saveTimer);
+    if(!pdfDocWriter||busy)return;
+    // Confirm before changing any source content or exporting staged markup.
+    if(options.confirm!==false){const message=edits.length?`Apply ${edits.length} staged change${edits.length===1?'':'s'} to the PDF?\nObject removals will be committed and annotations embedded.`:'No staged items to apply. Continue anyway?';if(!confirm(message))return false;options={...options,confirm:false};}
+    busy=true;clearTimeout(saveTimer);
     // Save the pre-apply draft, so editable annotations can be recovered.
     busy=false;await saveDraft();busy=true;
     const backup=await pdfDocWriter.save(),staged=deepClone(edits),rotations=[...pageRotDelta],views={...pageViewports};
     try{
       showLoading('Applying annotations…');
+      window.PdfObjectRemoval?.apply(pdfDocWriter,edits.filter(it=>it.type==='sourceRemoval'));
+      edits=edits.filter(it=>it.type!=='sourceRemoval');
       const redactions=edits.filter(it=>it.type==='redact').map(it=>{const r=it.rectCss;return {...it,pdfCorners:pdfPoints([{x:r.x,y:r.y},{x:r.x+r.w,y:r.y},{x:r.x+r.w,y:r.y+r.h},{x:r.x,y:r.y+r.h}],it)};});
       for(const it of edits.filter(it=>TYPES.has(it.type)))await exportMarkup(it);
       edits=edits.filter(it=>!TYPES.has(it.type));
